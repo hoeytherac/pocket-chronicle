@@ -60,7 +60,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .brand-lockup { display: flex; align-items: center; gap: 12px; }
 .brand-button { min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .brand-button > span:last-child { display: grid; gap: 2px; }
-.brand-button strong { color: var(--blue-dark); font-family: var(--font-display), Georgia, serif; font-size: 24px; line-height: 1; }
+.brand-lockup strong { color: var(--blue-dark); font-family: var(--font-display), Georgia, serif; font-size: 24px; line-height: 1; }
 
 .brand-mark {
   width: 42px; height: 42px; display: grid; place-items: center;
@@ -224,6 +224,19 @@ h1 { font-size: 24px; line-height: 1; }
 .form-error { margin: 8px 0 0 !important; color: #a34a4a !important; text-align: center; }
 .demo-link { width: 100%; margin-top: 13px; border: 0; color: var(--blue); background: transparent; cursor: pointer; font-size: 10px; }
 
+.connection-shell { grid-template-rows: auto minmax(0, 1fr) auto; }
+.connection-gate { display: grid; place-items: center; align-content: center; padding: 34px 28px; text-align: center; }
+.connection-gate h1 { max-width: 330px; margin: 9px 0 12px; font-size: 42px; line-height: .94; }
+.connection-gate > p:not(.eyebrow) { max-width: 330px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.gate-sigil { width: 68px; height: 68px; display: grid; place-items: center; margin-bottom: 25px; border: 1px solid var(--line); border-radius: 22px; color: var(--muted); background: var(--panel); font-family: Georgia, serif; font-size: 30px; box-shadow: 0 14px 34px rgba(0,0,0,.24); }
+.gate-sigil.online { color: var(--blue-bright); border-color: #4f6984; box-shadow: 0 0 0 5px rgba(79,105,132,.12); }
+.connection-form { width: min(100%, 320px); margin-top: 22px; }
+.connection-form input { width: 100%; height: 58px; border: 1px solid var(--line); border-radius: 15px; outline: 0; color: var(--blue-dark); background: var(--panel); font-family: var(--font-display), serif; font-size: 26px; font-weight: 700; letter-spacing: .16em; text-align: center; text-transform: uppercase; }
+.connection-form input::placeholder { color: #6f7885; }
+.connection-form input:focus { border-color: #6685a4; box-shadow: 0 0 0 3px rgba(102,133,164,.16); }
+.gate-button { width: min(100%, 220px); margin-top: 24px; }
+.connection-footer { padding: 15px 22px max(17px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); color: var(--muted); background: #0d1016; font-size: 10px; line-height: 1.4; text-align: center; }
+
 @media (max-width: 520px) {
   .app-canvas { display: block; padding: 0; }
   .phone-shell { width: 100%; height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
@@ -233,7 +246,7 @@ h1 { font-size: 24px; line-height: 1; }
 @media (max-width: 360px) {
   .ability-grid { grid-template-columns: repeat(3, 1fr); }
   .dice-tray { grid-template-columns: repeat(3, 1fr); }
-  .brand-button strong { font-size: 21px; }
+  .brand-lockup strong { font-size: 21px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

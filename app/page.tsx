@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { demoSnapshot } from "@/lib/demo-data";
 import type { ChronicleActionKind, ChronicleJournal, ChronicleSnapshot } from "@/lib/protocol";
 
 type Tab = "home" | "character" | "journal" | "chat" | "shop";
+type ConnectionMode = "checking" | "offline" | "pairing" | "waiting" | "live";
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 const tabs: Array<{ id: Tab; label: string; mark: string }> = [
@@ -26,7 +27,7 @@ function signed(value: number) {
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [snapshot, setSnapshot] = useState<ChronicleSnapshot>(demoSnapshot);
-  const [mode, setMode] = useState<"demo" | "live">("demo");
+  const [mode, setMode] = useState<ConnectionMode>("checking");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pairingOpen, setPairingOpen] = useState(false);
   const [pairingCode, setPairingCode] = useState("");
@@ -36,6 +37,28 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const actor = snapshot.actor;
+
+  const refreshConnection = useCallback(async () => {
+    const stateResponse = await fetch("/api/state", { cache: "no-store" }).catch(() => null);
+    if (stateResponse?.ok) {
+      const data = await stateResponse.json() as { snapshot: ChronicleSnapshot };
+      setSnapshot(data.snapshot);
+      setMode("live");
+      return;
+    }
+    if (stateResponse?.status === 404) {
+      setMode("waiting");
+      return;
+    }
+    if (stateResponse?.status === 503) {
+      setMode("offline");
+      return;
+    }
+
+    const statusResponse = await fetch("/api/status", { cache: "no-store" }).catch(() => null);
+    const status = statusResponse?.ok ? await statusResponse.json() as { connected?: boolean } : null;
+    setMode(status?.connected ? "pairing" : "offline");
+  }, []);
 
   useEffect(() => {
     const capture = (event: Event) => {
@@ -47,31 +70,27 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (mode !== "live") return;
-    const refresh = async () => {
-      const response = await fetch("/api/state", { cache: "no-store" });
-      if (!response.ok) return;
-      const data = await response.json() as { snapshot: ChronicleSnapshot };
-      setSnapshot(data.snapshot);
+    const initial = window.setTimeout(refreshConnection, 0);
+    const timer = window.setInterval(refreshConnection, 5000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
     };
-    refresh();
-    const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
-  }, [mode]);
+  }, [refreshConnection]);
 
   const displayName = useMemo(() => actor.name.split(" ").slice(0, 2).join(" "), [actor.name]);
 
   async function sendAction(kind: ChronicleActionKind, payload: Record<string, unknown>, success: string) {
-    if (mode === "live") {
-      const response = await fetch("/api/actions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind, payload }),
-      });
-      if (!response.ok) {
-        setNotice("Foundry could not receive that action yet.");
-        return false;
-      }
+    if (mode !== "live") return false;
+    const response = await fetch("/api/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind, payload }),
+    });
+    if (!response.ok) {
+      if (response.status === 503) setMode("offline");
+      setNotice("Foundry could not receive that action yet.");
+      return false;
     }
     setNotice(success);
     window.setTimeout(() => setNotice(""), 2600);
@@ -82,14 +101,6 @@ export default function Home() {
     event.preventDefault();
     setPairingError("");
     const normalized = pairingCode.replace(/[^a-z0-9]/gi, "").toUpperCase();
-    if (normalized === "DEMO24") {
-      setMode("demo");
-      setSnapshot(demoSnapshot);
-      setPairingOpen(false);
-      setSettingsOpen(false);
-      setNotice("Preview campaign paired.");
-      return;
-    }
     const response = await fetch("/api/pair", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -100,48 +111,25 @@ export default function Home() {
       setPairingError(data.error || "That pairing code did not work.");
       return;
     }
-    setMode("live");
+    setMode("checking");
     setPairingOpen(false);
     setSettingsOpen(false);
     setNotice("Phone paired with Foundry.");
+    await refreshConnection();
   }
 
   async function adjustHp(amount: number) {
-    if (!(await sendAction("adjustHp", { amount }, "Hit points sent to Foundry."))) return;
-    if (mode === "demo") {
-      setSnapshot((current) => ({
-        ...current,
-        actor: {
-          ...current.actor,
-          hp: { ...current.actor.hp, value: Math.max(0, Math.min(current.actor.hp.max, current.actor.hp.value + amount)) },
-        },
-      }));
-    }
+    await sendAction("adjustHp", { amount }, "Hit points sent to Foundry.");
   }
 
   async function rollDie(sides: number) {
-    const randomValue = new Uint32Array(1);
-    crypto.getRandomValues(randomValue);
-    const result = (randomValue[0] % sides) + 1;
-    await sendAction("roll", { formula: `1d${sides}` }, `Rolled 1d${sides}: ${result}`);
-    if (mode === "demo") {
-      setSnapshot((current) => ({
-        ...current,
-        messages: [...current.messages, { id: crypto.randomUUID(), author: displayName, content: `Rolled 1d${sides}`, rollTotal: result, timestamp: Date.now() }],
-      }));
-    }
+    await sendAction("roll", { formula: `1d${sides}` }, `1d${sides} sent to Foundry.`);
   }
 
   async function sendChat(event: React.FormEvent) {
     event.preventDefault();
     const content = chatText.trim();
     if (!content || !(await sendAction("chat", { content }, "Message sent to Foundry chat."))) return;
-    if (mode === "demo") {
-      setSnapshot((current) => ({
-        ...current,
-        messages: [...current.messages, { id: crypto.randomUUID(), author: displayName, content, timestamp: Date.now() }],
-      }));
-    }
     setChatText("");
   }
 
@@ -273,6 +261,52 @@ export default function Home() {
     </>;
   }
 
+  if (mode !== "live") {
+    const gateTitle = mode === "offline"
+      ? "Foundry is offline"
+      : mode === "pairing"
+        ? "Pair this phone"
+        : mode === "waiting"
+          ? "Waiting for your character"
+          : "Checking your table…";
+    const gateCopy = mode === "offline"
+      ? "Ask the GM to open the Foundry world and enable the Pocket Chronicle module. This app remains locked while the bridge is offline."
+      : mode === "pairing"
+        ? "The Foundry module is online. Enter the temporary six-character code from your GM to unlock your campaign."
+        : mode === "waiting"
+          ? "This phone is paired, but Foundry has not sent the first character update yet. Keep the world open for a moment."
+          : "Looking for an active Pocket Chronicle module.";
+
+    return (
+      <main className="app-canvas">
+        <section className="phone-shell connection-shell" aria-label="Pocket Chronicle connection">
+          <header className="app-header">
+            <div className="brand-lockup">
+              <span className="brand-mark" aria-hidden="true">PC</span>
+              <span><small className="eyebrow">FOUNDRY COMPANION</small><strong>Pocket Chronicle</strong></span>
+            </div>
+          </header>
+          <section className="connection-gate" aria-live="polite">
+            <span className={`gate-sigil ${mode === "pairing" ? "online" : ""}`} aria-hidden="true">◇</span>
+            <p className="eyebrow">SECURE TABLE CONNECTION</p>
+            <h1>{gateTitle}</h1>
+            <p>{gateCopy}</p>
+            {mode === "pairing" ? (
+              <form className="connection-form" onSubmit={pairPhone}>
+                <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" />
+                {pairingError && <p className="form-error">{pairingError}</p>}
+                <button className="primary-button full-button" type="submit">Connect campaign</button>
+              </form>
+            ) : (
+              <button className="secondary-button gate-button" type="button" onClick={() => { setMode("checking"); refreshConnection(); }}>Check again</button>
+            )}
+          </section>
+          <footer className="connection-footer">No Foundry password or Scene canvas is sent to this phone.</footer>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-canvas">
       <section className="phone-shell" aria-label="Pocket Chronicle phone app">
@@ -286,7 +320,7 @@ export default function Home() {
 
         <div className="connection-strip" role="status">
           <span className="status-dot" aria-hidden="true" />
-          <span>{mode === "demo" ? "Previewing" : "Connected to"} {snapshot.campaign.name}</span>
+          <span>Connected to {snapshot.campaign.name}</span>
           <span className="edition-badge">{snapshot.campaign.edition}</span>
         </div>
 
@@ -311,7 +345,7 @@ export default function Home() {
           <section className="bottom-sheet">
             <div className="sheet-handle" />
             <p className="eyebrow">POCKET CHRONICLE</p><h2>Phone settings</h2>
-            <div className="setting-row"><span><strong>Campaign</strong><small>{snapshot.campaign.name}</small></span><span className="edition-badge">{mode === "demo" ? "Preview" : "Live"}</span></div>
+            <div className="setting-row"><span><strong>Campaign</strong><small>{snapshot.campaign.name}</small></span><span className="edition-badge">Live</span></div>
             <button className="sheet-action" type="button" onClick={installApp}><span>⌂</span><span><strong>Install on this phone</strong><small>Use it like an app from your home screen.</small></span></button>
             <button className="sheet-action" type="button" onClick={() => setPairingOpen(true)}><span>◇</span><span><strong>Pair another campaign</strong><small>Enter the temporary code from your GM.</small></span></button>
             <button className="secondary-button full-button" type="button" onClick={() => setSettingsOpen(false)}>Done</button>
@@ -327,7 +361,6 @@ export default function Home() {
             <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" />
             {pairingError && <p className="form-error">{pairingError}</p>}
             <button className="primary-button full-button" type="submit">Connect campaign</button>
-            <button className="demo-link" type="button" onClick={() => setPairingCode("DEMO24")}>Use preview code DEMO24</button>
           </form>
         </div>}
       </section>

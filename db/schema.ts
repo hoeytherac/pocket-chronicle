@@ -17,6 +17,7 @@ export const campaigns = sqliteTable("campaigns", {
   name: text("name").notNull(),
   bridgeKeyHash: text("bridge_key_hash").notNull(),
   status: text("status", { enum: ["active", "paused"] }).notNull().default("active"),
+  lastSeenAt: integer("last_seen_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 }, (table) => [index("campaigns_tenant_idx").on(table.tenantId)]);

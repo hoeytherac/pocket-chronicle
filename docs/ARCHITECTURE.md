@@ -18,6 +18,8 @@ Foundry world
 
 The active GM bridge sends sanitized snapshots. The phone submits small, typed actions. Foundry remains authoritative: the bridge validates and performs each action, then refreshes the snapshot.
 
+The same bridge package works from any HTTPS Foundry host. Each campaign receives a unique ID and bridge key, so one hosted Pocket Chronicle service can safely serve unrelated DMs and worlds. Requests travel outward from the active GM's browser; Pocket Chronicle never makes an inbound connection to Foundry.
+
 ## Storage model
 
 - `tenants` separates DMs and carries edition/subscription state.
@@ -32,6 +34,8 @@ Every server-side character query derives tenant and campaign from an authentica
 ## Relay behavior
 
 The first release uses short HTTPS polling: approximately two seconds for player actions and thirty seconds for a full snapshot, with event-driven refreshes after Foundry document changes. This is intentionally simple and reliable on serverless hosting. A durable WebSocket service can replace polling later without changing the phone protocol.
+
+The bridge also sends an authenticated heartbeat every ten seconds. Pairing and phone actions require a heartbeat no older than thirty seconds; otherwise the player sees a locked connection screen.
 
 ## Foundry authority
 

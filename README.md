@@ -22,8 +22,9 @@ The current build includes the phone UI, installable PWA shell, private pairing 
 - GM-curated shop requests
 - installable from Safari or Chrome using the phone's home-screen flow
 - no Scene canvas, map rendering, or Foundry desktop controls
+- locked connection screen whenever the paired Foundry module is offline
 
-Use pairing code `DEMO24` to explore the built-in preview without a running Foundry world.
+There is no unconnected demo mode. A player can enter the app only while an authenticated Pocket Chronicle module is active in Foundry.
 
 ## Local development
 
@@ -59,7 +60,7 @@ The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Fou
 1. Deploy the app and configure a long `POCKET_BOOTSTRAP_TOKEN` server secret.
 2. Apply the generated migration in `drizzle/` to the site's D1 database.
 3. Call `POST /api/admin/bootstrap` once with the secret to create your tenant and campaign. Save the returned bridge key; it is shown only once.
-4. Install `foundry/pocket-chronicle-bridge` in Foundry and enter the app address, campaign ID, and bridge key in Module Settings.
+4. Install the module using `https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json`, then enter the app address, campaign ID, and bridge key in Foundry's Module Settings.
 5. Enable the bridge and reload the world as the active GM.
 6. From a GM macro, create a ten-minute player code:
 
@@ -76,6 +77,8 @@ The player opens the app, chooses **Pair another campaign**, and enters the code
 await game.modules.get("pocket-chronicle-bridge").api.shareJournal("JournalEntry.YOUR_UUID");
 await game.modules.get("pocket-chronicle-bridge").api.shareShopItem("Item.YOUR_UUID");
 ```
+
+The module sends a heartbeat every ten seconds. The phone interface locks after thirty seconds without an authenticated heartbeat. Each DM can use the same module with their own Foundry HTTPS address and unique campaign credentials; the hosted app never logs into or pulls directly from their server.
 
 ## Repository map
 

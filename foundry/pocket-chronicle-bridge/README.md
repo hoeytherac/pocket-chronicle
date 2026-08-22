@@ -2,7 +2,15 @@
 
 This is not a mobile Foundry interface. It is a small active-GM bridge for the standalone Pocket Chronicle phone app. It never renders the Scene canvas.
 
-After installing it, set the app address, campaign ID, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects.
+Install with this Foundry manifest URL:
+
+```text
+https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json
+```
+
+Then set the app address, campaign ID, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
+
+Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
 
 Create a ten-minute pairing code from a GM macro:
 

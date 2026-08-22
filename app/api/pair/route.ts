@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { pairingCodes, playerSessions } from "@/db/schema";
+import { campaigns, pairingCodes, playerSessions } from "@/db/schema";
+import { isBridgeOnline } from "@/lib/bridge-presence";
 import { jsonError } from "@/lib/server-auth";
 import { randomToken, sessionCookie, sha256 } from "@/lib/security";
 
@@ -20,6 +21,15 @@ export async function POST(request: Request) {
     .limit(1);
 
   if (!pairing) return jsonError("That pairing code is invalid or has expired.", 404);
+
+  const [campaign] = await db
+    .select({ lastSeenAt: campaigns.lastSeenAt, status: campaigns.status })
+    .from(campaigns)
+    .where(eq(campaigns.id, pairing.campaignId))
+    .limit(1);
+  if (!campaign || campaign.status !== "active" || !isBridgeOnline(campaign.lastSeenAt)) {
+    return jsonError("That Foundry module is offline. Ask the GM to open the world and enable Pocket Chronicle.", 503);
+  }
 
   const now = Date.now();
   const token = randomToken();

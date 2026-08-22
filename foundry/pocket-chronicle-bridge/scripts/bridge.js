@@ -73,10 +73,21 @@ function startBridge() {
     ui.notifications.warn("Pocket Chronicle Bridge needs its app address, campaign ID, and bridge key in Module Settings.");
     return;
   }
+  sendHeartbeat(true);
   pushAllSnapshots();
+  window.setInterval(sendHeartbeat, 10000);
   window.setInterval(pollActions, current.pollMs);
   window.setInterval(pushAllSnapshots, 30000);
   console.info(`${MODULE_ID} | Active GM bridge started`);
+}
+
+async function sendHeartbeat(announce = false) {
+  try {
+    await bridgeFetch("/api/bridge/heartbeat", { method: "POST", body: "{}" });
+    if (announce) ui.notifications.info(`Pocket Chronicle connected to ${game.world.title}.`);
+  } catch (error) {
+    console.debug(`${MODULE_ID} | Heartbeat paused`, error);
+  }
 }
 
 function headers() {

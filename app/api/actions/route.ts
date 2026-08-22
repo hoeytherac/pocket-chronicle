@@ -1,11 +1,13 @@
 import { getDb } from "@/db";
 import { actions } from "@/db/schema";
 import { allowedActionKinds, type ChronicleActionKind } from "@/lib/protocol";
+import { isBridgeOnline } from "@/lib/bridge-presence";
 import { jsonError, requirePlayerSession } from "@/lib/server-auth";
 
 export async function POST(request: Request) {
   const session = await requirePlayerSession(request);
   if (!session) return jsonError("Your phone is not paired with this campaign.", 401);
+  if (!isBridgeOnline(session.lastSeenAt)) return jsonError("The Foundry module is offline.", 503);
 
   const body = await request.json().catch(() => null) as { kind?: ChronicleActionKind; payload?: Record<string, unknown> } | null;
   if (!body?.kind || !allowedActionKinds.has(body.kind)) return jsonError("That action is not supported.", 400);
