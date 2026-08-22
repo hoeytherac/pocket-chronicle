@@ -11,7 +11,7 @@ One codebase supports two editions:
 - **Personal:** a self-hosted edition for one DM. Billing is bypassed intentionally.
 - **Commercial:** a multi-DM edition with tenant isolation and subscription entitlements. A payment provider can be added through the billing boundary without mixing payment code into character data.
 
-The current build includes the phone UI, installable PWA shell, Foundry player-account sign-in, multi-character access, private pairing codes, D1-backed campaign relay, action queue, Foundry bridge, and personal/commercial data boundaries. A customer account dashboard and live payment checkout are intentionally reserved for the commercial release phase.
+The current build includes the phone UI, installable PWA shell, campaign-password access requests, GM phone approval, Foundry player-account sign-in, multi-character access, D1-backed campaign relay, action queue, Foundry bridge, and personal/commercial data boundaries. A customer account dashboard and live payment checkout are intentionally reserved for the commercial release phase.
 
 ## Player experience
 
@@ -61,9 +61,11 @@ The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Fou
 2. Apply the generated migration in `drizzle/` to the site's D1 database.
 3. Call `POST /api/admin/bootstrap` once with the secret to create your tenant and campaign. Save the returned bridge key; it is shown only once.
 4. Install the module using `https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json`, then enter the app address, campaign ID, and bridge key in Foundry's Module Settings.
-5. Enable the bridge and reload the world as the active GM.
-6. Open **Game Settings → Configure Settings → Pocket Chronicle Bridge** and click **Pair a Phone**. Choose an existing non-GM Foundry user who owns at least one character, then give that player the displayed ten-minute code.
-7. The player opens the app, enters the code, and creates a separate Pocket Chronicle password. The account automatically receives every character it owns in Foundry. Foundry passwords are never requested, copied, or stored.
+5. Under **Game Settings → Configure Settings → Pocket Chronicle Bridge**, create a separate **Campaign password** of at least eight characters, enable the bridge, save, and reload the world as the active GM.
+6. The player opens the app, enters the Campaign ID and Campaign password, and selects their existing Foundry user.
+7. Foundry shows the active GM an approval prompt. After approval, the player creates a separate Pocket Chronicle password for future sign-ins. The account automatically receives every character it owns in Foundry. Foundry passwords are never requested, copied, or stored.
+
+The bridge and every approval prompt use Foundry documents directly. They do not render or depend on the Scene canvas, so the canvas may remain disabled.
 
 To share content, use the bridge API from a GM macro:
 

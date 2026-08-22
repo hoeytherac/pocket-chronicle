@@ -38,7 +38,7 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, layout, manifest, schema, bridge, security, migration, packageJson, worker] = await Promise.all([
+  const [page, layout, manifest, schema, bridge, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
@@ -46,6 +46,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../lib/security.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_thankful_white_tiger.sql", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0003_flowery_matthew_murdock.sql", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
   ]);
@@ -54,6 +55,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(page, /requestLevelUp/);
   assert.match(page, /Install on this phone/);
   assert.match(page, /Pocket Chronicle password/);
+  assert.match(page, /Campaign password/);
+  assert.match(page, /Request GM approval/);
   assert.match(page, /characters\.map/);
   assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(manifest, /"orientation": "portrait-primary"/);
@@ -62,15 +65,19 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(schema, /export const playerAccounts/);
   assert.match(schema, /export const playerAccountCharacters/);
   assert.match(schema, /export const accountPairingCodes/);
+  assert.match(schema, /export const phoneAccessRequests/);
   assert.match(bridge, /only the active GM|activeGms/i);
   assert.match(bridge, /api\/bridge\/heartbeat/);
   assert.match(bridge, /hasCompleteConfig/);
   assert.match(bridge, /AbortController/);
   assert.match(bridge, /pushAllSnapshots\.pending/);
-  assert.match(bridge, /Pair a Phone/);
-  assert.match(bridge, /account-pairing-codes/);
+  assert.match(bridge, /campaignPassword/);
+  assert.match(bridge, /Check Phone Requests/);
+  assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(security, /PBKDF2/);
-  assert.match(migration, /CREATE TABLE `player_accounts`/);
+  assert.match(accountMigration, /CREATE TABLE `player_accounts`/);
+  assert.match(accessMigration, /CREATE TABLE `phone_access_requests`/);
+  assert.match(accessMigration, /pairing_password_hash/);
   assert.match(worker, /request\.method === "OPTIONS"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });

@@ -16,6 +16,7 @@ export const campaigns = sqliteTable("campaigns", {
   tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   bridgeKeyHash: text("bridge_key_hash").notNull(),
+  pairingPasswordHash: text("pairing_password_hash"),
   status: text("status", { enum: ["active", "paused"] }).notNull().default("active"),
   lastSeenAt: integer("last_seen_at"),
   createdAt: integer("created_at").notNull(),
@@ -48,6 +49,22 @@ export const playerAccounts = sqliteTable("player_accounts", {
 }, (table) => [
   uniqueIndex("player_accounts_campaign_user_unique").on(table.campaignId, table.foundryUserId),
   index("player_accounts_campaign_idx").on(table.campaignId),
+]);
+
+export const phoneAccessRequests = sqliteTable("phone_access_requests", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull().references(() => playerAccounts.id, { onDelete: "cascade" }),
+  requestTokenHash: text("request_token_hash").notNull(),
+  status: text("status", { enum: ["pending", "approved", "denied", "consumed"] }).notNull().default("pending"),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+  decidedAt: integer("decided_at"),
+  consumedAt: integer("consumed_at"),
+}, (table) => [
+  uniqueIndex("phone_access_requests_token_unique").on(table.requestTokenHash),
+  index("phone_access_requests_campaign_queue_idx").on(table.campaignId, table.status, table.createdAt),
+  index("phone_access_requests_expiry_idx").on(table.expiresAt),
 ]);
 
 export const playerAccountCharacters = sqliteTable("player_account_characters", {

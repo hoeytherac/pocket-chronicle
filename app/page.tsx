@@ -9,6 +9,9 @@ type ConnectionMode = "checking" | "offline" | "pairing" | "signin" | "waiting" 
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 type AccountLink = { id: string; playerLabel: string; campaignName: string };
 type PairingChallenge = { playerLabel: string; campaignName: string; needsPasswordSetup: boolean };
+type PairingStep = "campaign" | "account" | "approval" | "credential";
+type PairingAccount = { id: string; playerLabel: string; characterCount: number };
+type AccessRequest = { id: string; token: string; playerLabel: string; campaignName: string };
 
 const ACCOUNT_STORAGE = "pocket-chronicle-account";
 const CHARACTER_STORAGE = "pocket-chronicle-character";
@@ -35,7 +38,12 @@ export default function Home() {
   const [mode, setMode] = useState<ConnectionMode>("checking");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pairingOpen, setPairingOpen] = useState(false);
-  const [pairingCode, setPairingCode] = useState("");
+  const [pairingStep, setPairingStep] = useState<PairingStep>("campaign");
+  const [campaignId, setCampaignId] = useState("");
+  const [campaignPassword, setCampaignPassword] = useState("");
+  const [pairingAccounts, setPairingAccounts] = useState<PairingAccount[]>([]);
+  const [selectedPairingAccountId, setSelectedPairingAccountId] = useState("");
+  const [accessRequest, setAccessRequest] = useState<AccessRequest | null>(null);
   const [pairingError, setPairingError] = useState("");
   const [pairingChallenge, setPairingChallenge] = useState<PairingChallenge | null>(null);
   const [password, setPassword] = useState("");
@@ -121,6 +129,38 @@ export default function Home() {
     };
   }, [refreshConnection]);
 
+  useEffect(() => {
+    if (pairingStep !== "approval" || !accessRequest) return;
+    const checkApproval = async () => {
+      const response = await fetch(`/api/campaign/access-requests/${encodeURIComponent(accessRequest.id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestToken: accessRequest.token }),
+      }).catch(() => null);
+      if (!response?.ok) return;
+      const data = await response.json() as { status?: string; needsPasswordSetup?: boolean };
+      if (data.status === "approved") {
+        setPairingChallenge({
+          playerLabel: accessRequest.playerLabel,
+          campaignName: accessRequest.campaignName,
+          needsPasswordSetup: Boolean(data.needsPasswordSetup),
+        });
+        setPairingStep("credential");
+        setPairingError("");
+      } else if (data.status === "denied" || data.status === "expired") {
+        setPairingStep("campaign");
+        setAccessRequest(null);
+        setPairingAccounts([]);
+        setPairingError(data.status === "denied"
+          ? "The GM denied this phone request. Check that you selected your own Foundry account."
+          : "That request expired. Enter the campaign details and try again.");
+      }
+    };
+    void checkApproval();
+    const timer = window.setInterval(checkApproval, 2000);
+    return () => window.clearInterval(timer);
+  }, [accessRequest, pairingStep]);
+
   const displayName = useMemo(() => actor.name.split(" ").slice(0, 2).join(" "), [actor.name]);
 
   async function sendAction(kind: ChronicleActionKind, payload: Record<string, unknown>, success: string) {
@@ -143,36 +183,68 @@ export default function Home() {
   async function pairPhone(event: React.FormEvent) {
     event.preventDefault();
     setPairingError("");
-    const normalized = pairingCode.replace(/[^a-z0-9]/gi, "").toUpperCase();
-    if (pairingChallenge?.needsPasswordSetup && password !== passwordConfirm) {
+
+    if (pairingStep === "campaign") {
+      const response = await fetch("/api/campaign/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ campaignId: campaignId.trim(), campaignPassword }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        campaign?: { id: string; name: string };
+        accounts?: PairingAccount[];
+      };
+      if (!response.ok || !data.campaign || !data.accounts?.length) {
+        setPairingError(data.error || "That campaign could not be connected.");
+        return;
+      }
+      setCampaignId(data.campaign.id);
+      setPairingAccounts(data.accounts);
+      setSelectedPairingAccountId(data.accounts[0].id);
+      setPairingStep("account");
+      return;
+    }
+
+    if (pairingStep === "account") {
+      const response = await fetch("/api/campaign/access-requests", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ campaignId, campaignPassword, accountId: selectedPairingAccountId }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        requestId?: string;
+        requestToken?: string;
+        playerLabel?: string;
+        campaignName?: string;
+      };
+      if (!response.ok || !data.requestId || !data.requestToken || !data.playerLabel || !data.campaignName) {
+        setPairingError(data.error || "That phone request could not be sent.");
+        return;
+      }
+      setAccessRequest({ id: data.requestId, token: data.requestToken, playerLabel: data.playerLabel, campaignName: data.campaignName });
+      setCampaignPassword("");
+      setPairingStep("approval");
+      return;
+    }
+
+    if (pairingStep !== "credential" || !pairingChallenge || !accessRequest) return;
+    if (pairingChallenge.needsPasswordSetup && password !== passwordConfirm) {
       setPairingError("Those passwords do not match.");
       return;
     }
-    const response = await fetch("/api/pair", {
+    const response = await fetch(`/api/campaign/access-requests/${encodeURIComponent(accessRequest.id)}/complete`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: normalized, password: pairingChallenge ? password : undefined }),
+      body: JSON.stringify({ requestToken: accessRequest.token, password }),
     });
     const data = await response.json().catch(() => ({})) as {
       error?: string;
-      challenge?: boolean;
-      playerLabel?: string;
-      campaignName?: string;
-      needsPasswordSetup?: boolean;
       account?: AccountLink;
     };
     if (!response.ok) {
-      setPairingError(data.error || "That pairing code did not work.");
-      return;
-    }
-    if (data.challenge && data.playerLabel && data.campaignName) {
-      setPairingChallenge({
-        playerLabel: data.playerLabel,
-        campaignName: data.campaignName,
-        needsPasswordSetup: Boolean(data.needsPasswordSetup),
-      });
-      setPassword("");
-      setPasswordConfirm("");
+      setPairingError(data.error || "That approved phone request could not be completed.");
       return;
     }
     if (data.account) {
@@ -183,7 +255,9 @@ export default function Home() {
     setPairingOpen(false);
     setSettingsOpen(false);
     setPairingChallenge(null);
-    setPairingCode("");
+    setPairingStep("campaign");
+    setAccessRequest(null);
+    setPairingAccounts([]);
     setPassword("");
     setPasswordConfirm("");
     setNotice("Your Foundry account is connected.");
@@ -253,7 +327,12 @@ export default function Home() {
 
   function beginAnotherPairing() {
     setPairingChallenge(null);
-    setPairingCode("");
+    setPairingStep("campaign");
+    setCampaignId("");
+    setCampaignPassword("");
+    setPairingAccounts([]);
+    setSelectedPairingAccountId("");
+    setAccessRequest(null);
     setPassword("");
     setPasswordConfirm("");
     setPairingError("");
@@ -261,7 +340,7 @@ export default function Home() {
   }
 
   function pairingFields() {
-    if (pairingChallenge) return <>
+    if (pairingStep === "credential" && pairingChallenge) return <>
       <div className="account-preview">
         <span className="portrait-placeholder compact">{initials(pairingChallenge.playerLabel)}</span>
         <span><small className="eyebrow">FOUNDRY ACCOUNT</small><strong>{pairingChallenge.playerLabel}</strong><small>{pairingChallenge.campaignName}</small></span>
@@ -272,7 +351,27 @@ export default function Home() {
       <input className="password-input" type="password" autoComplete={pairingChallenge.needsPasswordSetup ? "new-password" : "current-password"} minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Pocket Chronicle password" aria-label="Pocket Chronicle password" required />
       {pairingChallenge.needsPasswordSetup && <input className="password-input confirm-input" type="password" autoComplete="new-password" minLength={8} maxLength={128} value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="Confirm password" aria-label="Confirm Pocket Chronicle password" required />}
     </>;
-    return <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" required />;
+    if (pairingStep === "account") return <>
+      <p className="credential-help">Choose your existing Foundry player account. You will receive every character that account owns.</p>
+      <select className="pair-account-select" value={selectedPairingAccountId} onChange={(event) => setSelectedPairingAccountId(event.target.value)} aria-label="Foundry player account" required>
+        {pairingAccounts.map((account) => <option key={account.id} value={account.id}>{account.playerLabel} — {account.characterCount} character{account.characterCount === 1 ? "" : "s"}</option>)}
+      </select>
+    </>;
+    if (pairingStep === "approval" && accessRequest) return <div className="approval-wait">
+      <span className="approval-pulse" aria-hidden="true">◇</span>
+      <strong>Request sent for {accessRequest.playerLabel}</strong>
+      <small>Ask your GM to approve this phone in Foundry. This screen will continue automatically.</small>
+    </div>;
+    return <>
+      <input className="campaign-id-input" autoCapitalize="none" autoComplete="username" maxLength={100} value={campaignId} onChange={(event) => setCampaignId(event.target.value)} placeholder="Campaign ID" aria-label="Campaign ID" required />
+      <input className="password-input confirm-input" type="password" autoComplete="current-password" minLength={8} maxLength={128} value={campaignPassword} onChange={(event) => setCampaignPassword(event.target.value)} placeholder="Campaign password" aria-label="Campaign password" required />
+    </>;
+  }
+
+  function pairingButtonLabel() {
+    if (pairingStep === "account") return "Request GM approval";
+    if (pairingStep === "credential") return pairingChallenge?.needsPasswordSetup ? "Create account & connect" : "Sign in & connect";
+    return "Find my campaign";
   }
 
   function HomeView() {
@@ -407,7 +506,13 @@ export default function Home() {
     const gateTitle = mode === "offline"
       ? "Foundry is offline"
       : mode === "pairing"
-        ? "Pair this phone"
+        ? pairingStep === "approval"
+          ? "Waiting for your GM"
+          : pairingStep === "account"
+            ? "Choose your account"
+            : pairingStep === "credential"
+              ? "Finish your sign-in"
+              : "Connect your campaign"
         : mode === "signin"
           ? `Welcome back, ${accountLink?.playerLabel || "adventurer"}`
         : mode === "waiting"
@@ -416,9 +521,13 @@ export default function Home() {
     const gateCopy = mode === "offline"
       ? "Ask the GM to open the Foundry world and enable the Pocket Chronicle module. This app remains locked while the bridge is offline."
       : mode === "pairing"
-        ? pairingChallenge
-          ? "Confirm the Foundry account selected by your GM, then finish your private Pocket Chronicle sign-in."
-          : "Enter the temporary six-character account code from your GM."
+        ? pairingStep === "approval"
+          ? "Your Foundry account is selected. The active GM must approve this phone before it can open campaign data."
+          : pairingStep === "account"
+            ? "Select your own Foundry user. Your GM will approve the request inside Foundry."
+            : pairingStep === "credential"
+              ? "Use a private Pocket Chronicle password for future visits. Never enter your Foundry password here."
+              : "Enter the Campaign ID and Campaign password your GM set in the Pocket Chronicle Bridge settings."
         : mode === "signin"
           ? `Sign in to ${accountLink?.campaignName || "your campaign"}. Your Foundry password is never requested.`
         : mode === "waiting"
@@ -443,14 +552,14 @@ export default function Home() {
               <form className="connection-form" onSubmit={pairPhone}>
                 {pairingFields()}
                 {pairingError && <p className="form-error">{pairingError}</p>}
-                <button className="primary-button full-button" type="submit">{pairingChallenge ? (pairingChallenge.needsPasswordSetup ? "Create account & connect" : "Sign in & connect") : "Continue"}</button>
+                {pairingStep !== "approval" && <button className="primary-button full-button" type="submit">{pairingButtonLabel()}</button>}
               </form>
             ) : mode === "signin" ? (
               <form className="connection-form" onSubmit={signIn}>
                 <input className="password-input" type="password" autoComplete="current-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Pocket Chronicle password" aria-label="Pocket Chronicle password" required />
                 {pairingError && <p className="form-error">{pairingError}</p>}
                 <button className="primary-button full-button" type="submit">Sign in</button>
-                <button className="demo-link" type="button" onClick={() => { setMode("pairing"); beginAnotherPairing(); setPairingOpen(false); }}>Use a new DM code</button>
+                <button className="demo-link" type="button" onClick={() => { setMode("pairing"); beginAnotherPairing(); setPairingOpen(false); }}>Use a different campaign</button>
               </form>
             ) : (
               <button className="secondary-button gate-button" type="button" onClick={() => { setMode("checking"); refreshConnection(); }}>Check again</button>
@@ -504,7 +613,7 @@ export default function Home() {
             <p className="eyebrow">POCKET CHRONICLE</p><h2>Phone settings</h2>
             <div className="setting-row"><span><strong>{accountLink?.playerLabel || "Player account"}</strong><small>{snapshot.campaign.name} · {characters.length} character{characters.length === 1 ? "" : "s"}</small></span><span className="edition-badge">Live</span></div>
             <button className="sheet-action" type="button" onClick={installApp}><span>⌂</span><span><strong>Install on this phone</strong><small>Use it like an app from your home screen.</small></span></button>
-            <button className="sheet-action" type="button" onClick={beginAnotherPairing}><span>◇</span><span><strong>Pair another account</strong><small>Enter a temporary account code from your GM.</small></span></button>
+            <button className="sheet-action" type="button" onClick={beginAnotherPairing}><span>◇</span><span><strong>Connect another campaign</strong><small>Use its Campaign ID and Campaign password.</small></span></button>
             <button className="secondary-button full-button" type="button" onClick={() => setSettingsOpen(false)}>Done</button>
           </section>
         </div>}
@@ -513,11 +622,11 @@ export default function Home() {
           <button className="modal-scrim" type="button" aria-label="Close pairing" onClick={() => setPairingOpen(false)} />
           <form className="pair-card" onSubmit={pairPhone}>
             <button className="close-button" type="button" aria-label="Close" onClick={() => setPairingOpen(false)}>×</button>
-            <p className="eyebrow">CONNECT SAFELY</p><h2 id="pair-title">{pairingChallenge ? "Confirm your account" : "Pair this phone"}</h2>
-            <p>{pairingChallenge ? "This password belongs only to Pocket Chronicle." : "Ask your GM for your Foundry account’s six-character code. It expires after ten minutes."}</p>
+            <p className="eyebrow">CONNECT SAFELY</p><h2 id="pair-title">{pairingStep === "approval" ? "Waiting for your GM" : pairingStep === "account" ? "Choose your account" : pairingStep === "credential" ? "Finish your sign-in" : "Connect a campaign"}</h2>
+            <p>{pairingStep === "approval" ? "Keep this open while your GM approves the phone in Foundry." : pairingStep === "account" ? "Select your own Foundry player account." : pairingStep === "credential" ? "This password belongs only to Pocket Chronicle." : "Enter the Campaign ID and Campaign password set by your GM."}</p>
             {pairingFields()}
             {pairingError && <p className="form-error">{pairingError}</p>}
-            <button className="primary-button full-button" type="submit">{pairingChallenge ? (pairingChallenge.needsPasswordSetup ? "Create account & connect" : "Sign in & connect") : "Continue"}</button>
+            {pairingStep !== "approval" && <button className="primary-button full-button" type="submit">{pairingButtonLabel()}</button>}
           </form>
         </div>}
       </section>

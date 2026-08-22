@@ -4,6 +4,7 @@ const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
+const displayedAccessRequests = new Set();
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "enabled", {
@@ -14,6 +15,9 @@ Hooks.once("init", () => {
   });
   game.settings.register(MODULE_ID, "campaignId", {
     name: "POCKET.CampaignId.Name", hint: "POCKET.CampaignId.Hint", scope: "world", config: true, type: String, default: "",
+  });
+  game.settings.register(MODULE_ID, "campaignPassword", {
+    name: "POCKET.CampaignPassword.Name", hint: "POCKET.CampaignPassword.Hint", scope: "world", config: true, type: String, default: "",
   });
   game.settings.register(MODULE_ID, "bridgeKey", {
     name: "POCKET.BridgeKey.Name", hint: "POCKET.BridgeKey.Hint", scope: "world", config: true, type: String, default: "",
@@ -28,6 +32,8 @@ Hooks.once("ready", () => {
   moduleRecord.api = {
     createPairing,
     createAccountPairing,
+    checkPhoneRequests: pollAccessRequests,
+    syncCampaignPassword,
     pushNow: pushAllSnapshots,
     shareJournal: async (uuid, shared = true) => {
       const journal = await fromUuid(uuid);
@@ -55,7 +61,10 @@ Hooks.on("createChatMessage", () => scheduleSnapshot());
 Hooks.on("updateJournalEntry", () => scheduleSnapshot());
 Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 Hooks.on("updateUser", () => scheduleSnapshot());
-Hooks.on("renderSettingsConfig", (_application, html) => addPairingControl(html));
+Hooks.on("renderSettingsConfig", (_application, html) => configureSettingsUi(html));
+Hooks.on("updateSetting", (setting) => {
+  if (setting?.key === `${MODULE_ID}.campaignPassword` && shouldRun()) window.setTimeout(() => void syncCampaignPassword(true), 250);
+});
 
 function isActiveBridgeHost() {
   if (!game.user?.isGM || !game.settings.get(MODULE_ID, "enabled")) return false;
@@ -71,6 +80,7 @@ function config() {
   return {
     relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || ""),
+    campaignPassword: String(game.settings.get(MODULE_ID, "campaignPassword") || ""),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || ""),
     pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
   };
@@ -93,9 +103,15 @@ function startBridge() {
     return;
   }
   const current = config();
-  void sendHeartbeat(true).then((connected) => connected && pushAllSnapshots());
+  void sendHeartbeat(true).then(async (connected) => {
+    if (!connected) return;
+    await syncCampaignPassword();
+    await pushAllSnapshots();
+    await pollAccessRequests();
+  });
   window.setInterval(() => void sendHeartbeat(), 10000);
   window.setInterval(() => void pollActions(), current.pollMs);
+  window.setInterval(() => void pollAccessRequests(), current.pollMs);
   window.setInterval(() => void pushAllSnapshots(), 30000);
   console.info(`${MODULE_ID} | Active GM bridge started`);
 }
@@ -141,6 +157,26 @@ async function bridgeFetch(path, options = {}) {
     return response.json();
   } finally {
     window.clearTimeout(timeout);
+  }
+}
+
+async function syncCampaignPassword(announce = false) {
+  if (!shouldRun()) return false;
+  const password = config().campaignPassword;
+  if (password.length < 8 || password.length > 128) {
+    if (announce) ui.notifications.warn("Set a Campaign password of at least eight characters before players connect.");
+    return false;
+  }
+  try {
+    const result = await bridgeFetch("/api/bridge/campaign-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+    if (announce || result.changed) ui.notifications.info("Pocket Chronicle Campaign password is ready.");
+    return true;
+  } catch (error) {
+    if (announce) ui.notifications.error(error.message || "Pocket Chronicle could not save the Campaign password.");
+    return false;
   }
 }
 
@@ -324,143 +360,109 @@ async function createPairing(actorUuid, playerLabel = "Player") {
   return result.code;
 }
 
-function addPairingControl(html) {
+function configureSettingsUi(html) {
   if (!game.user?.isGM) return;
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector("[data-pocket-chronicle-pair]")) return;
-  const enabled = root.querySelector(`[name="${MODULE_ID}.enabled"]`);
-  const anchor = enabled?.closest(".form-group");
+  const passwordInput = root.querySelector(`[name="${MODULE_ID}.campaignPassword"]`);
+  const bridgeKeyInput = root.querySelector(`[name="${MODULE_ID}.bridgeKey"]`);
+  if (passwordInput) {
+    passwordInput.type = "password";
+    passwordInput.autocomplete = "new-password";
+  }
+  if (bridgeKeyInput) {
+    bridgeKeyInput.type = "password";
+    bridgeKeyInput.autocomplete = "off";
+  }
+  const anchor = passwordInput?.closest(".form-group");
   if (!anchor) return;
 
   const group = document.createElement("div");
   group.className = "form-group pocket-chronicle-pairing-control";
   group.dataset.pocketChroniclePair = "true";
   const label = document.createElement("label");
-  label.textContent = "Player phone access";
+  label.textContent = "Player phone approvals";
   const fields = document.createElement("div");
   fields.className = "form-fields";
   const button = document.createElement("button");
   button.type = "button";
-  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Pair a Phone';
-  button.addEventListener("click", () => void openPlayerAccessDialog());
+  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Check Phone Requests';
+  button.addEventListener("click", () => void pollAccessRequests(true));
   fields.append(button);
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Choose an existing Foundry player account and create its ten-minute phone code.";
+  hint.textContent = "Players enter the Campaign ID and Campaign password in the app, choose their Foundry account, then ask you to approve the phone.";
   group.append(label, fields, hint);
   anchor.insertAdjacentElement("afterend", group);
 }
 
-async function choosePlayer(players) {
+async function chooseAccessDecision(accessRequest) {
   const content = document.createElement("div");
   content.className = "pocket-chronicle-player-picker";
   const intro = document.createElement("p");
-  intro.textContent = "Choose the Foundry account that will use this phone. Every character owned by that account will be included.";
-  const select = document.createElement("select");
-  select.name = "playerId";
-  select.style.width = "100%";
-  for (const player of players) {
-    const option = document.createElement("option");
-    option.value = player.userId;
-    option.textContent = `${player.name} — ${player.actorUuids.length} character${player.actorUuids.length === 1 ? "" : "s"}`;
-    select.append(option);
-  }
-  content.append(intro, select);
+  intro.textContent = `${accessRequest.playerLabel} wants to connect a phone to ${accessRequest.characterCount} owned character${accessRequest.characterCount === 1 ? "" : "s"}. Approve only if this player is currently asking to connect.`;
+  content.append(intro);
 
   const DialogV2 = foundry.applications?.api?.DialogV2;
   if (DialogV2) {
     return DialogV2.wait({
-      window: { title: "Pair a Pocket Chronicle Phone" },
-      content,
+      window: { title: "Pocket Chronicle Phone Request" },
+      content: content.outerHTML,
       modal: true,
       rejectClose: false,
       buttons: [
-        { action: "cancel", label: "Cancel" },
-        { action: "pair", label: "Create Phone Code", icon: "fa-solid fa-link", default: true, callback: () => select.value },
+        { action: "later", label: "Later", callback: () => "later" },
+        { action: "deny", label: "Deny", icon: "fa-solid fa-ban", callback: () => "deny" },
+        { action: "approve", label: "Approve Phone", icon: "fa-solid fa-mobile-screen-button", default: true, callback: () => "approve" },
       ],
     });
   }
 
   return new Promise((resolve) => {
     new Dialog({
-      title: "Pair a Pocket Chronicle Phone",
+      title: "Pocket Chronicle Phone Request",
       content: content.outerHTML,
       buttons: {
-        cancel: { label: "Cancel", callback: () => resolve(null) },
-        pair: { label: "Create Phone Code", callback: (dialogHtml) => resolve(dialogHtml.find('[name="playerId"]').val()) },
+        later: { label: "Later", callback: () => resolve("later") },
+        deny: { label: "Deny", callback: () => resolve("deny") },
+        approve: { label: "Approve Phone", callback: () => resolve("approve") },
       },
-      default: "pair",
-      close: () => resolve(null),
+      default: "approve",
+      close: () => resolve("later"),
     }).render(true);
   });
 }
 
-async function showPairingCode(result) {
-  const content = document.createElement("div");
-  content.className = "pocket-chronicle-code-card";
-  const label = document.createElement("p");
-  label.textContent = `Give this code to ${result.playerLabel}. It connects their Foundry account and ${result.characterCount} character${result.characterCount === 1 ? "" : "s"}.`;
-  const code = document.createElement("strong");
-  code.textContent = result.code;
-  const expiry = document.createElement("p");
-  expiry.textContent = "The code expires in ten minutes. Their Pocket Chronicle password is separate from their Foundry password.";
-  content.append(label, code, expiry);
-
-  const copyCode = async () => {
-    await navigator.clipboard?.writeText(result.code);
-    ui.notifications.info("Pocket Chronicle code copied.");
-  };
-  const DialogV2 = foundry.applications?.api?.DialogV2;
-  if (DialogV2) {
-    await DialogV2.wait({
-      window: { title: "Phone Code Ready" },
-      content,
-      rejectClose: false,
-      buttons: [
-        { action: "done", label: "Done" },
-        { action: "copy", label: "Copy Code", icon: "fa-solid fa-copy", default: true, callback: copyCode },
-      ],
-    });
+async function pollAccessRequests(announceEmpty = false) {
+  if (!shouldRun() || !bridgeOnline || pollAccessRequests.pending) return;
+  if (config().campaignPassword.length < 8) {
+    if (announceEmpty) ui.notifications.warn("Set and save a Campaign password of at least eight characters first.");
     return;
   }
-  new Dialog({
-    title: "Phone Code Ready",
-    content: content.outerHTML,
-    buttons: {
-      done: { label: "Done" },
-      copy: { label: "Copy Code", callback: copyCode },
-    },
-    default: "copy",
-  }).render(true);
-}
-
-async function openPlayerAccessDialog() {
-  if (!shouldRun()) {
-    ui.notifications.warn("Enable and configure Pocket Chronicle, save the settings, then reload Foundry before pairing a phone.");
-    return;
-  }
-  if (!bridgeOnline && !(await sendHeartbeat())) {
-    ui.notifications.error("Pocket Chronicle could not reach the phone app. Check the app address and bridge key.");
-    return;
-  }
-  await pushAllSnapshots();
-  const players = playerRoster();
-  if (players.length === 0) {
-    ui.notifications.warn("No non-GM Foundry user currently owns a character. Assign Owner permission first.");
-    return;
-  }
-  const userId = await choosePlayer(players);
-  if (!userId) return;
-  const player = players.find((entry) => entry.userId === userId);
-  if (!player) return;
+  pollAccessRequests.pending = true;
   try {
-    const result = await bridgeFetch("/api/bridge/account-pairing-codes", {
-      method: "POST",
-      body: JSON.stringify({ foundryUserId: player.userId, playerLabel: player.name, actorUuids: player.actorUuids }),
-    });
-    await showPairingCode(result);
+    const result = await bridgeFetch("/api/bridge/access-requests");
+    const requests = (result.requests || []).filter((entry) => !displayedAccessRequests.has(entry.id));
+    if (announceEmpty && requests.length === 0) ui.notifications.info("No phones are waiting for approval.");
+    for (const accessRequest of requests) {
+      displayedAccessRequests.add(accessRequest.id);
+      const decision = await chooseAccessDecision(accessRequest);
+      if (decision === "approve" || decision === "deny") {
+        await bridgeFetch(`/api/bridge/access-requests/${encodeURIComponent(accessRequest.id)}`, {
+          method: "POST",
+          body: JSON.stringify({ decision }),
+        });
+        ui.notifications.info(decision === "approve"
+          ? `${accessRequest.playerLabel}'s phone was approved.`
+          : `${accessRequest.playerLabel}'s phone request was denied.`);
+      } else {
+        displayedAccessRequests.delete(accessRequest.id);
+      }
+    }
   } catch (error) {
-    ui.notifications.error(error.message || "Pocket Chronicle could not create that phone code.");
+    if (announceEmpty) ui.notifications.error(error.message || "Pocket Chronicle could not check phone requests.");
+  } finally {
+    pollAccessRequests.pending = false;
   }
 }
 

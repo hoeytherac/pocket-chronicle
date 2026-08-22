@@ -8,20 +8,13 @@ Install with this Foundry manifest URL:
 https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json
 ```
 
-Then set the app address, campaign ID, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
+Then set the app address, campaign ID, a separate Campaign password, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
 
-After saving and reloading, return to the module settings and click **Pair a Phone**. Choose an existing Foundry player account. Pocket Chronicle creates a ten-minute account code and automatically includes every character for which that user has Owner permission. The player creates a separate Pocket Chronicle password on first connection; the bridge never reads or transmits Foundry passwords.
+After saving and reloading, players enter the Campaign ID and Campaign password in the phone app, then select their existing Foundry account. The active GM receives an approve-or-deny prompt in Foundry. Once approved, the player creates a separate Pocket Chronicle password and automatically receives every character for which that Foundry user has Owner permission. The bridge never reads or transmits Foundry passwords.
+
+The bridge does not depend on the Scene canvas. Phone requests, approvals, character data, journals, chat, and actions continue to work when the canvas is disabled.
 
 Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
-
-Create a ten-minute pairing code from a GM macro:
-
-```js
-await game.modules.get("pocket-chronicle-bridge").api.createPairing(
-  "Actor.YOUR_CHARACTER_UUID",
-  "Player name"
-);
-```
 
 Share a journal or shop item:
 
