@@ -37,6 +37,23 @@ npm run dev
 
 The local app opens at `http://localhost:3000`. The D1 binding is declared as `DB` in `.openai/hosting.json`.
 
+## Cloudflare deployment
+
+The personal deployment is live at:
+
+`https://pocket-chronicle.colesen.workers.dev`
+
+Pocket Chronicle uses Cloudflare Workers rather than static Pages because its pairing, relay API, and D1 database all require server-side code. The free `workers.dev` address does not require a purchased domain.
+
+After authenticating Wrangler and creating the D1 database named `pocket-chronicle`, deploy updates with:
+
+```text
+npm run db:migrate:cloudflare
+npm run deploy:cloudflare
+```
+
+The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Foundry connection values belong only in the ignored `.pocket-chronicle.local.json`; never commit the bridge key.
+
 ## Connect a personal Foundry campaign
 
 1. Deploy the app and configure a long `POCKET_BOOTSTRAP_TOKEN` server secret.

@@ -13,7 +13,9 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "validate": "npm run lint && npm run typecheck && npm test",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:cloudflare": "wrangler d1 migrations apply pocket-chronicle --remote --config wrangler.cloudflare.jsonc",
+    "deploy:cloudflare": "npm run build && wrangler deploy --config wrangler.cloudflare.jsonc"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

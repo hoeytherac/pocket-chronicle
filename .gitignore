@@ -42,3 +42,6 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# Personal Cloudflare/Foundry connection values (never commit)
+/.pocket-chronicle.local.json

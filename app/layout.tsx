@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   applicationName: "Pocket Chronicle",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Pocket Chronicle",
   },
   icons: {
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#eaf7ff",
+  themeColor: "#0f1117",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
