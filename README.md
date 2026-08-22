@@ -1,53 +1,71 @@
 # Pocket Chronicle
 
-Pocket Chronicle is an experimental, map-free interface for Foundry VTT. It gives players a compact view of the parts of Foundry they need without intentionally using the Scene canvas. Foundry's core client does not officially support phones, so this in-world module cannot prevent failures that occur before modules finish loading.
+Pocket Chronicle is an installable phone companion for Foundry VTT. It gives players the table tools they actually need—character actions, shared journals, chat, dice, and a GM-curated shop—without loading Foundry's Scene canvas or desktop interface.
 
-## First-release features
+The old in-browser phone panel has been removed from the main branch. Its releases remain preserved in Git history. The only Foundry-side component now is a small, GM-controlled bridge that moves approved data between Foundry and the standalone app.
 
-- A touch-friendly quick character sheet for owned characters
-- HP changes, ability checks, saving throws, skills, item use, and rests
-- One-tap access to the real Foundry character sheet for every system/module function, editing, and level-up workflows
-- Permission-aware journal reading
-- A GM-curated gallery for journal pages, handouts, and pictures
-- Mobile chat with recent roll cards and messages
-- A built-in dice tray and custom formulas; rolls use Foundry chat so Dice So Nice and similar roll listeners can respond
-- A GM-curated shop that safely asks the active GM to fulfill purchases, deducts the listed D&D 5e coin, and adds the purchased Item to the selected actor
-- Optional per-browser Map-Free Mode using Foundry's own Disable Canvas setting when it is available
-- No Scene or Canvas API calls in the module
+## Product shape
 
-## Install for local testing
+One codebase supports two editions:
 
-1. Create a folder named `pocket-chronicle` inside Foundry's `Data/modules` folder.
-2. Copy this repository's contents into that folder.
-3. Restart Foundry, enable **Pocket Chronicle** in the world, and reload.
-4. Open it with the phone button or the **P** key. It no longer opens automatically on mobile browsers.
+- **Personal:** a self-hosted edition for one DM. Billing is bypassed intentionally.
+- **Commercial:** a multi-DM edition with tenant isolation and subscription entitlements. A payment provider can be added through the billing boundary without mixing payment code into character data.
 
-For the best phone performance, open the Home tab once and choose **Enable Map-Free Mode**. That is a client-only Foundry preference, so it affects the phone browser without disabling the map on the GM's computer.
+The current build includes the phone UI, installable PWA shell, private pairing codes, D1-backed campaign relay, action queue, Foundry bridge, and personal/commercial data boundaries. A customer account dashboard and live payment checkout are intentionally reserved for the commercial release phase.
 
-## Install from GitHub
+## Player experience
 
-Paste this address into Foundry's **Install Module** manifest URL field:
+- portrait-first phone layout with a clear blue, restrained fantasy style
+- character HP, ability scores, actions, spells, and level-up requests
+- GM-shared journal entries and images
+- table chat and d4/d6/d8/d10/d12/d20 rolls
+- GM-curated shop requests
+- installable from Safari or Chrome using the phone's home-screen flow
+- no Scene canvas, map rendering, or Foundry desktop controls
 
-`https://github.com/hoeytherac/pocket-chronicle/releases/latest/download/module.json`
+Use pairing code `DEMO24` to explore the built-in preview without a running Foundry world.
 
-## GM workflow
+## Local development
 
-Open **GM Tools** in Pocket Chronicle.
+Requires Node.js 22.13 or newer.
 
-- Drag a Journal Entry or Journal page into the Shared Gallery area.
-- Use the image form to publish a picture or handout path.
-- Drag a world Item into Pocket Shop to stock it with its current image, description, and D&D 5e price.
+```text
+npm install
+npm run db:generate
+npm run dev
+```
 
-The Shared Gallery stores a player-safe snapshot of a dropped journal page, removing Foundry secret sections. This lets players see exactly what the GM publishes without opening the rest of a private journal. Drop the page again to refresh its snapshot. Published image paths and snapshots are intentionally public to players in that world. The separate Journals tab still follows ordinary Foundry journal permissions.
+The local app opens at `http://localhost:3000`. The D1 binding is declared as `DB` in `.openai/hosting.json`.
 
-## Character compatibility
+## Connect a personal Foundry campaign
 
-The fast sheet understands common D&D 5e data for HP, AC, speed, abilities, skills, currency, items, and rests. The **Edit / Level Up** button opens the actor's actual configured sheet, preserving features added by the game system and other modules. In a non-D&D system, generic browsing remains available and unsupported quick actions fall back to that full sheet.
+1. Deploy the app and configure a long `POCKET_BOOTSTRAP_TOKEN` server secret.
+2. Apply the generated migration in `drizzle/` to the site's D1 database.
+3. Call `POST /api/admin/bootstrap` once with the secret to create your tenant and campaign. Save the returned bridge key; it is shown only once.
+4. Install `foundry/pocket-chronicle-bridge` in Foundry and enter the app address, campaign ID, and bridge key in Module Settings.
+5. Enable the bridge and reload the world as the active GM.
+6. From a GM macro, create a ten-minute player code:
 
-## Performance approach
+```js
+await game.modules.get("pocket-chronicle-bridge").api.createPairing(
+  "Actor.xKNwG0YjGiFC4nOo",
+  "Amara"
+);
+```
 
-Pocket Chronicle deliberately does not render maps, tokens, walls, lighting, or scene controls. Shared images use native lazy loading, the chat list is capped, and document updates are debounced. Foundry itself loads before world modules, so the optional Foundry **Disable Canvas** client setting is the reliable way to prevent canvas initialization on later phone visits.
+The player opens the app, chooses **Pair another campaign**, and enters the code. To share content, use the bridge API from a GM macro:
 
-## Current scope
+```js
+await game.modules.get("pocket-chronicle-bridge").api.shareJournal("JournalEntry.YOUR_UUID");
+await game.modules.get("pocket-chronicle-bridge").api.shareShopItem("Item.YOUR_UUID");
+```
 
-This is an initial `0.1.0` build for Foundry VTT 13, with forward-compatible styling and feature detection for Foundry 14. It should be tested in a copy of the campaign world before release.
+## Repository map
+
+- `app/` — installable phone interface and relay API
+- `db/` and `drizzle/` — tenant, campaign, session, snapshot, and action storage
+- `foundry/pocket-chronicle-bridge/` — lightweight Foundry bridge
+- `lib/` — shared protocol, security, and edition boundaries
+- `docs/` — architecture, privacy, and commercialization notes
+
+See [Architecture](docs/ARCHITECTURE.md), [Security](docs/SECURITY.md), and [Commercial Edition](docs/COMMERCIAL-EDITION.md) before operating this for players outside your own campaign.

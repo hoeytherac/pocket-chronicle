@@ -1,0 +1,27 @@
+{
+  "id": "pocket-chronicle-bridge",
+  "title": "Pocket Chronicle Bridge",
+  "description": "A lightweight, GM-controlled bridge between Foundry and the Pocket Chronicle phone app. It does not render a phone interface or load the Scene canvas.",
+  "version": "0.2.0",
+  "authors": [
+    {
+      "name": "The Grand Blooming"
+    }
+  ],
+  "compatibility": {
+    "minimum": "12",
+    "verified": "14"
+  },
+  "esmodules": [
+    "scripts/bridge.js"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "manifest": "https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json",
+  "download": "https://github.com/hoeytherac/pocket-chronicle/releases/latest/download/pocket-chronicle-bridge.zip"
+}

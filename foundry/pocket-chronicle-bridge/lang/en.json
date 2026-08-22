@@ -1,0 +1,12 @@
+{
+  "POCKET.Enable.Name": "Enable Pocket Chronicle bridge",
+  "POCKET.Enable.Hint": "Only the active GM sends approved character and journal data to the phone relay.",
+  "POCKET.RelayUrl.Name": "Pocket Chronicle app address",
+  "POCKET.RelayUrl.Hint": "The HTTPS address of your deployed Pocket Chronicle app.",
+  "POCKET.CampaignId.Name": "Campaign ID",
+  "POCKET.CampaignId.Hint": "The campaign ID created when this campaign was provisioned.",
+  "POCKET.BridgeKey.Name": "Private bridge key",
+  "POCKET.BridgeKey.Hint": "Keep this secret. Players pair with short temporary codes instead.",
+  "POCKET.PollMs.Name": "Action check interval",
+  "POCKET.PollMs.Hint": "How often the active GM checks for phone actions, in milliseconds."
+}
