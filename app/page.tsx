@@ -40,7 +40,7 @@ export default function Home() {
   const [pairingOpen, setPairingOpen] = useState(false);
   const [pairingStep, setPairingStep] = useState<PairingStep>("campaign");
   const [campaignId, setCampaignId] = useState("");
-  const [campaignPassword, setCampaignPassword] = useState("");
+  const [campaignCode, setCampaignCode] = useState("");
   const [pairingAccounts, setPairingAccounts] = useState<PairingAccount[]>([]);
   const [selectedPairingAccountId, setSelectedPairingAccountId] = useState("");
   const [accessRequest, setAccessRequest] = useState<AccessRequest | null>(null);
@@ -188,7 +188,7 @@ export default function Home() {
       const response = await fetch("/api/campaign/connect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ campaignId: campaignId.trim(), campaignPassword }),
+        body: JSON.stringify({ campaignId: campaignId.trim(), campaignCode }),
       });
       const data = await response.json().catch(() => ({})) as {
         error?: string;
@@ -210,7 +210,7 @@ export default function Home() {
       const response = await fetch("/api/campaign/access-requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ campaignId, campaignPassword, accountId: selectedPairingAccountId }),
+        body: JSON.stringify({ campaignId, campaignCode, accountId: selectedPairingAccountId }),
       });
       const data = await response.json().catch(() => ({})) as {
         error?: string;
@@ -224,7 +224,7 @@ export default function Home() {
         return;
       }
       setAccessRequest({ id: data.requestId, token: data.requestToken, playerLabel: data.playerLabel, campaignName: data.campaignName });
-      setCampaignPassword("");
+      setCampaignCode("");
       setPairingStep("approval");
       return;
     }
@@ -329,7 +329,7 @@ export default function Home() {
     setPairingChallenge(null);
     setPairingStep("campaign");
     setCampaignId("");
-    setCampaignPassword("");
+    setCampaignCode("");
     setPairingAccounts([]);
     setSelectedPairingAccountId("");
     setAccessRequest(null);
@@ -364,7 +364,7 @@ export default function Home() {
     </div>;
     return <>
       <input className="campaign-id-input" autoCapitalize="none" autoComplete="username" maxLength={100} value={campaignId} onChange={(event) => setCampaignId(event.target.value)} placeholder="Campaign ID" aria-label="Campaign ID" required />
-      <input className="password-input confirm-input" type="password" autoComplete="current-password" minLength={8} maxLength={128} value={campaignPassword} onChange={(event) => setCampaignPassword(event.target.value)} placeholder="Campaign password" aria-label="Campaign password" required />
+      <input className="campaign-code-input confirm-input" autoCapitalize="characters" autoComplete="off" inputMode="text" minLength={6} maxLength={6} pattern="[A-Za-z0-9]{6}" value={campaignCode} onChange={(event) => setCampaignCode(event.target.value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase())} placeholder="ABC123" aria-label="Permanent six-character Campaign code" required />
     </>;
   }
 
@@ -527,7 +527,7 @@ export default function Home() {
             ? "Select your own Foundry user. Your GM will approve the request inside Foundry."
             : pairingStep === "credential"
               ? "Use a private Pocket Chronicle password for future visits. Never enter your Foundry password here."
-              : "Enter the Campaign ID and Campaign password your GM set in the Pocket Chronicle Bridge settings."
+              : "Enter the Campaign ID and permanent six-character Campaign code your GM set in the Pocket Chronicle Bridge settings."
         : mode === "signin"
           ? `Sign in to ${accountLink?.campaignName || "your campaign"}. Your Foundry password is never requested.`
         : mode === "waiting"
@@ -613,7 +613,7 @@ export default function Home() {
             <p className="eyebrow">POCKET CHRONICLE</p><h2>Phone settings</h2>
             <div className="setting-row"><span><strong>{accountLink?.playerLabel || "Player account"}</strong><small>{snapshot.campaign.name} · {characters.length} character{characters.length === 1 ? "" : "s"}</small></span><span className="edition-badge">Live</span></div>
             <button className="sheet-action" type="button" onClick={installApp}><span>⌂</span><span><strong>Install on this phone</strong><small>Use it like an app from your home screen.</small></span></button>
-            <button className="sheet-action" type="button" onClick={beginAnotherPairing}><span>◇</span><span><strong>Connect another campaign</strong><small>Use its Campaign ID and Campaign password.</small></span></button>
+            <button className="sheet-action" type="button" onClick={beginAnotherPairing}><span>◇</span><span><strong>Connect another campaign</strong><small>Use its Campaign ID and permanent six-character code.</small></span></button>
             <button className="secondary-button full-button" type="button" onClick={() => setSettingsOpen(false)}>Done</button>
           </section>
         </div>}
@@ -623,7 +623,7 @@ export default function Home() {
           <form className="pair-card" onSubmit={pairPhone}>
             <button className="close-button" type="button" aria-label="Close" onClick={() => setPairingOpen(false)}>×</button>
             <p className="eyebrow">CONNECT SAFELY</p><h2 id="pair-title">{pairingStep === "approval" ? "Waiting for your GM" : pairingStep === "account" ? "Choose your account" : pairingStep === "credential" ? "Finish your sign-in" : "Connect a campaign"}</h2>
-            <p>{pairingStep === "approval" ? "Keep this open while your GM approves the phone in Foundry." : pairingStep === "account" ? "Select your own Foundry player account." : pairingStep === "credential" ? "This password belongs only to Pocket Chronicle." : "Enter the Campaign ID and Campaign password set by your GM."}</p>
+            <p>{pairingStep === "approval" ? "Keep this open while your GM approves the phone in Foundry." : pairingStep === "account" ? "Select your own Foundry player account." : pairingStep === "credential" ? "This password belongs only to Pocket Chronicle." : "Enter the Campaign ID and permanent six-character code set by your GM."}</p>
             {pairingFields()}
             {pairingError && <p className="form-error">{pairingError}</p>}
             {pairingStep !== "approval" && <button className="primary-button full-button" type="submit">{pairingButtonLabel()}</button>}

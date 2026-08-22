@@ -5,8 +5,8 @@ Pocket Chronicle is designed so a lost phone does not reveal a Foundry password 
 ## Trust boundaries
 
 - Bridge keys are long random secrets stored in Foundry world settings and hashed in D1.
-- Players enter a separate campaign password, select an existing Foundry user, and wait for the active GM to approve that phone. Access requests expire after ten minutes.
-- The campaign password is protected with a salted PBKDF2 hash in the relay database. It is never the Foundry administrator password.
+- Players enter the permanent six-character Campaign code, select an existing Foundry user, and wait for the active GM to approve that phone. Access requests expire after ten minutes.
+- The Campaign code is protected with a salted PBKDF2 hash in the relay database. It is never the Foundry administrator password.
 - Pocket Chronicle passwords are separate from Foundry passwords and are stored only as salted PBKDF2 hashes.
 - Paired sessions use opaque, hashed tokens in Secure, HttpOnly, SameSite cookies.
 - Character actions are accepted only for Actor UUIDs currently mapped to the signed-in Foundry account with Owner permission.

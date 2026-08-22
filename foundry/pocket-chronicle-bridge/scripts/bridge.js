@@ -16,8 +16,8 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "campaignId", {
     name: "POCKET.CampaignId.Name", hint: "POCKET.CampaignId.Hint", scope: "world", config: true, type: String, default: "",
   });
-  game.settings.register(MODULE_ID, "campaignPassword", {
-    name: "POCKET.CampaignPassword.Name", hint: "POCKET.CampaignPassword.Hint", scope: "world", config: true, type: String, default: "",
+  game.settings.register(MODULE_ID, "campaignCode", {
+    name: "POCKET.CampaignCode.Name", hint: "POCKET.CampaignCode.Hint", scope: "world", config: true, type: String, default: "",
   });
   game.settings.register(MODULE_ID, "bridgeKey", {
     name: "POCKET.BridgeKey.Name", hint: "POCKET.BridgeKey.Hint", scope: "world", config: true, type: String, default: "",
@@ -33,7 +33,7 @@ Hooks.once("ready", () => {
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
-    syncCampaignPassword,
+    syncCampaignCode,
     pushNow: pushAllSnapshots,
     shareJournal: async (uuid, shared = true) => {
       const journal = await fromUuid(uuid);
@@ -63,7 +63,7 @@ Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 Hooks.on("updateUser", () => scheduleSnapshot());
 Hooks.on("renderSettingsConfig", (_application, html) => configureSettingsUi(html));
 Hooks.on("updateSetting", (setting) => {
-  if (setting?.key === `${MODULE_ID}.campaignPassword` && shouldRun()) window.setTimeout(() => void syncCampaignPassword(true), 250);
+  if (setting?.key === `${MODULE_ID}.campaignCode` && shouldRun()) window.setTimeout(() => void syncCampaignCode(true), 250);
 });
 
 function isActiveBridgeHost() {
@@ -80,7 +80,7 @@ function config() {
   return {
     relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || ""),
-    campaignPassword: String(game.settings.get(MODULE_ID, "campaignPassword") || ""),
+    campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase(),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || ""),
     pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
   };
@@ -105,7 +105,7 @@ function startBridge() {
   const current = config();
   void sendHeartbeat(true).then(async (connected) => {
     if (!connected) return;
-    await syncCampaignPassword();
+    await syncCampaignCode();
     await pushAllSnapshots();
     await pollAccessRequests();
   });
@@ -160,22 +160,22 @@ async function bridgeFetch(path, options = {}) {
   }
 }
 
-async function syncCampaignPassword(announce = false) {
+async function syncCampaignCode(announce = false) {
   if (!shouldRun()) return false;
-  const password = config().campaignPassword;
-  if (password.length < 8 || password.length > 128) {
-    if (announce) ui.notifications.warn("Set a Campaign password of at least eight characters before players connect.");
+  const code = config().campaignCode;
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    if (announce) ui.notifications.warn("Set a permanent six-character Campaign code using letters and numbers.");
     return false;
   }
   try {
-    const result = await bridgeFetch("/api/bridge/campaign-password", {
+    const result = await bridgeFetch("/api/bridge/campaign-code", {
       method: "POST",
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ code }),
     });
-    if (announce || result.changed) ui.notifications.info("Pocket Chronicle Campaign password is ready.");
+    if (announce || result.changed) ui.notifications.info("Pocket Chronicle Campaign code is ready.");
     return true;
   } catch (error) {
-    if (announce) ui.notifications.error(error.message || "Pocket Chronicle could not save the Campaign password.");
+    if (announce) ui.notifications.error(error.message || "Pocket Chronicle could not save the Campaign code.");
     return false;
   }
 }
@@ -364,17 +364,23 @@ function configureSettingsUi(html) {
   if (!game.user?.isGM) return;
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector("[data-pocket-chronicle-pair]")) return;
-  const passwordInput = root.querySelector(`[name="${MODULE_ID}.campaignPassword"]`);
+  const codeInput = root.querySelector(`[name="${MODULE_ID}.campaignCode"]`);
   const bridgeKeyInput = root.querySelector(`[name="${MODULE_ID}.bridgeKey"]`);
-  if (passwordInput) {
-    passwordInput.type = "password";
-    passwordInput.autocomplete = "new-password";
+  if (codeInput) {
+    codeInput.maxLength = 6;
+    codeInput.minLength = 6;
+    codeInput.pattern = "[A-Za-z0-9]{6}";
+    codeInput.autocomplete = "off";
+    codeInput.style.textTransform = "uppercase";
+    codeInput.addEventListener("input", () => {
+      codeInput.value = codeInput.value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase();
+    });
   }
   if (bridgeKeyInput) {
     bridgeKeyInput.type = "password";
     bridgeKeyInput.autocomplete = "off";
   }
-  const anchor = passwordInput?.closest(".form-group");
+  const anchor = codeInput?.closest(".form-group");
   if (!anchor) return;
 
   const group = document.createElement("div");
@@ -391,7 +397,7 @@ function configureSettingsUi(html) {
   fields.append(button);
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Players enter the Campaign ID and Campaign password in the app, choose their Foundry account, then ask you to approve the phone.";
+  hint.textContent = "Players enter the Campaign ID and this permanent six-character code in the app, choose their Foundry account, then ask you to approve the phone.";
   group.append(label, fields, hint);
   anchor.insertAdjacentElement("afterend", group);
 }
@@ -435,8 +441,8 @@ async function chooseAccessDecision(accessRequest) {
 
 async function pollAccessRequests(announceEmpty = false) {
   if (!shouldRun() || !bridgeOnline || pollAccessRequests.pending) return;
-  if (config().campaignPassword.length < 8) {
-    if (announceEmpty) ui.notifications.warn("Set and save a Campaign password of at least eight characters first.");
+  if (!/^[A-Z0-9]{6}$/.test(config().campaignCode)) {
+    if (announceEmpty) ui.notifications.warn("Set and save a permanent six-character Campaign code first.");
     return;
   }
   pollAccessRequests.pending = true;

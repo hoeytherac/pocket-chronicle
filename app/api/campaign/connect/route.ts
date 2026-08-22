@@ -6,11 +6,11 @@ import { authenticateCampaignAccess } from "@/lib/campaign-access";
 import { jsonError } from "@/lib/server-auth";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { campaignId?: string; campaignPassword?: string } | null;
-  if (!body?.campaignId || !body.campaignPassword) return jsonError("Enter the Campaign ID and Campaign password from your GM.", 400);
+  const body = await request.json().catch(() => null) as { campaignId?: string; campaignCode?: string } | null;
+  if (!body?.campaignId || !body.campaignCode) return jsonError("Enter the Campaign ID and permanent six-character Campaign code from your GM.", 400);
 
-  const campaign = await authenticateCampaignAccess(body.campaignId, body.campaignPassword);
-  if (!campaign) return jsonError("That Campaign ID or Campaign password is incorrect.", 401);
+  const campaign = await authenticateCampaignAccess(body.campaignId, body.campaignCode);
+  if (!campaign) return jsonError("That Campaign ID or Campaign code is incorrect.", 401);
   if (!isBridgeOnline(campaign.lastSeenAt)) return jsonError("That Foundry world is offline. Ask the GM to open it and enable Pocket Chronicle.", 503);
 
   const rows = await getDb()

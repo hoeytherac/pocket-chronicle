@@ -11,13 +11,13 @@ const REQUEST_LIFETIME_MS = 10 * 60 * 1000;
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as {
     campaignId?: string;
-    campaignPassword?: string;
+    campaignCode?: string;
     accountId?: string;
   } | null;
-  if (!body?.campaignId || !body.campaignPassword || !body.accountId) return jsonError("Choose your Foundry player account.", 400);
+  if (!body?.campaignId || !body.campaignCode || !body.accountId) return jsonError("Choose your Foundry player account.", 400);
 
-  const campaign = await authenticateCampaignAccess(body.campaignId, body.campaignPassword);
-  if (!campaign) return jsonError("That Campaign ID or Campaign password is incorrect.", 401);
+  const campaign = await authenticateCampaignAccess(body.campaignId, body.campaignCode);
+  if (!campaign) return jsonError("That Campaign ID or Campaign code is incorrect.", 401);
   if (!isBridgeOnline(campaign.lastSeenAt)) return jsonError("That Foundry world is offline.", 503);
 
   const db = getDb();

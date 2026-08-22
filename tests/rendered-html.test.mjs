@@ -55,7 +55,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(page, /requestLevelUp/);
   assert.match(page, /Install on this phone/);
   assert.match(page, /Pocket Chronicle password/);
-  assert.match(page, /Campaign password/);
+  assert.match(page, /six-character Campaign code/);
   assert.match(page, /Request GM approval/);
   assert.match(page, /characters\.map/);
   assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/);
@@ -71,7 +71,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /hasCompleteConfig/);
   assert.match(bridge, /AbortController/);
   assert.match(bridge, /pushAllSnapshots\.pending/);
-  assert.match(bridge, /campaignPassword/);
+  assert.match(bridge, /campaignCode/);
+  assert.match(bridge, /api\/bridge\/campaign-code/);
+  assert.ok(bridge.indexOf('"campaignId"') < bridge.indexOf('"campaignCode"'));
+  assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(security, /PBKDF2/);

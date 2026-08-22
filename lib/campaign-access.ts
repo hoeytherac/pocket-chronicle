@@ -5,9 +5,10 @@ import { hasProductAccess } from "@/lib/entitlements";
 import type { Edition, SubscriptionStatus } from "@/lib/protocol";
 import { verifyPassword } from "@/lib/security";
 
-export async function authenticateCampaignAccess(campaignId: string, password: string) {
+export async function authenticateCampaignAccess(campaignId: string, code: string) {
   const normalizedCampaignId = campaignId.trim().slice(0, 100);
-  if (!normalizedCampaignId || password.length < 8 || password.length > 128) return null;
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCampaignId || !/^[A-Z0-9]{6}$/.test(normalizedCode)) return null;
 
   const [campaign] = await getDb()
     .select({
@@ -26,6 +27,6 @@ export async function authenticateCampaignAccess(campaignId: string, password: s
 
   if (!campaign || campaign.status !== "active" || !campaign.pairingPasswordHash) return null;
   if (!hasProductAccess(campaign.edition as Edition, campaign.subscriptionStatus as SubscriptionStatus)) return null;
-  if (!(await verifyPassword(password, campaign.pairingPasswordHash))) return null;
+  if (!(await verifyPassword(normalizedCode, campaign.pairingPasswordHash))) return null;
   return campaign;
 }

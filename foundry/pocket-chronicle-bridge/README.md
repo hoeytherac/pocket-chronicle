@@ -8,9 +8,9 @@ Install with this Foundry manifest URL:
 https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json
 ```
 
-Then set the app address, campaign ID, a separate Campaign password, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
+Then set the app address, campaign ID, a permanent six-character Campaign code, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
 
-After saving and reloading, players enter the Campaign ID and Campaign password in the phone app, then select their existing Foundry account. The active GM receives an approve-or-deny prompt in Foundry. Once approved, the player creates a separate Pocket Chronicle password and automatically receives every character for which that Foundry user has Owner permission. The bridge never reads or transmits Foundry passwords.
+After saving and reloading, players enter the Campaign ID and the same permanent six-character Campaign code in the phone app, then select their existing Foundry account. The active GM receives an approve-or-deny prompt in Foundry. Once approved, the player creates a separate Pocket Chronicle password and automatically receives every character for which that Foundry user has Owner permission. The bridge never reads or transmits Foundry passwords.
 
 The bridge does not depend on the Scene canvas. Phone requests, approvals, character data, journals, chat, and actions continue to work when the canvas is disabled.
 
