@@ -85,7 +85,7 @@ body.pc-interface-open #board {
   min-width: 0;
 }
 
-.pc-butterfly {
+.pc-device-mark {
   display: grid;
   place-items: center;
   width: 45px;
@@ -94,9 +94,13 @@ body.pc-interface-open #board {
   border: 1px solid rgba(75, 178, 255, 0.55);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(26, 141, 237, 0.42), rgba(3, 13, 27, 0.9));
-  filter: saturate(1.35);
   box-shadow: 0 0 18px rgba(56, 167, 255, 0.3);
-  font-size: 23px;
+  color: var(--pc-gold-soft);
+  font-size: 19px;
+}
+
+.pc-rotate-notice {
+  display: none;
 }
 
 .pc-brand h1,
@@ -1157,7 +1161,7 @@ body.pc-interface-open #board {
   background: radial-gradient(circle at 35% 25%, #157ccc, #04172b 72%);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.55), 0 0 18px rgba(46, 152, 235, 0.34);
   cursor: pointer;
-  font-size: 25px;
+  font-size: 21px;
 }
 
 #pc-launcher:hover,
@@ -1225,13 +1229,97 @@ body.pc-interface-open #pc-launcher {
   }
 }
 
+body.pc-phone-device .pocket-chronicle-app {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  width: 100dvw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border: 0;
+  border-radius: 0;
+  transform: none !important;
+}
+
+body.pc-phone-device .pc-shell {
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
+}
+
+body.pc-phone-device.pc-interface-open #ui-left,
+body.pc-phone-device.pc-interface-open #ui-middle,
+body.pc-phone-device.pc-interface-open #ui-right {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.pc-phone-device .pc-header {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+body.pc-phone-device .pc-bottom-nav {
+  grid-auto-columns: minmax(52px, 1fr);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (orientation: landscape) {
+  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice {
+    position: absolute;
+    z-index: 50;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 13px;
+    padding: max(24px, env(safe-area-inset-top)) max(28px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(28px, env(safe-area-inset-left));
+    color: var(--pc-ink);
+    background:
+      radial-gradient(circle at 50% 36%, rgba(26, 126, 207, 0.3), transparent 34%),
+      linear-gradient(150deg, #071c35, #020812 72%);
+    text-align: center;
+  }
+
+  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice h2 {
+    color: var(--pc-gold-soft);
+    font-size: clamp(29px, 7vh, 46px);
+  }
+
+  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice p {
+    max-width: 430px;
+    margin: 0;
+    color: var(--pc-sky);
+  }
+
+  body.pc-phone-device:not(.pc-landscape-allowed) .pc-phone-outline {
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 78px;
+    border: 2px solid var(--pc-gold);
+    border-radius: 12px;
+    color: var(--pc-blue-bright);
+    font-size: 28px;
+  }
+
+  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice .pc-primary {
+    min-width: 190px;
+  }
+}
+
 @media (max-width: 520px) {
   .pc-header {
     min-height: 72px;
     padding-inline: 12px;
   }
 
-  .pc-butterfly {
+  .pc-device-mark {
     width: 39px;
     height: 39px;
     flex-basis: 39px;

@@ -12,7 +12,36 @@ export function formatModifier(value) {
 }
 
 export function isCompactViewport() {
-  return window.matchMedia?.("(max-width: 820px), (pointer: coarse)")?.matches ?? window.innerWidth <= 820;
+  return isPhoneDevice() || (window.matchMedia?.("(max-width: 820px), (pointer: coarse)")?.matches ?? window.innerWidth <= 820);
+}
+
+export function isPhoneDevice() {
+  const browserNavigator = globalThis.navigator ?? {};
+  const browserWindow = globalThis.window ?? {};
+  const browserScreen = browserWindow.screen ?? globalThis.screen ?? {};
+  return detectPhoneDevice({
+    userAgent: browserNavigator.userAgent,
+    mobileHint: browserNavigator.userAgentData?.mobile,
+    platform: browserNavigator.platform,
+    touchPoints: browserNavigator.maxTouchPoints,
+    screenWidth: browserScreen.width,
+    screenHeight: browserScreen.height,
+    innerWidth: browserWindow.innerWidth,
+    innerHeight: browserWindow.innerHeight
+  });
+}
+
+export function detectPhoneDevice(signals = {}) {
+  const userAgent = signals.userAgent ?? "";
+  const mobileHint = signals.mobileHint === true;
+  const mobileAgent = /Android|webOS|iPhone|iPod|IEMobile|Opera Mini|Mobile/i.test(userAgent);
+  const touchPoints = Number(signals.touchPoints) || 0;
+  const iPadAgent = /iPad/i.test(userAgent) || (signals.platform === "MacIntel" && touchPoints > 1);
+  const screenWidth = Number(signals.screenWidth) || Number(signals.innerWidth) || 9999;
+  const screenHeight = Number(signals.screenHeight) || Number(signals.innerHeight) || 9999;
+  const shortScreenEdge = Math.min(screenWidth, screenHeight);
+  const touchSizedDevice = touchPoints > 1 && shortScreenEdge <= 1024;
+  return mobileHint || mobileAgent || iPadAgent || touchSizedDevice;
 }
 
 export function primaryActiveGM() {

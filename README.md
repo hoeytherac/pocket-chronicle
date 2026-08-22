@@ -1,6 +1,6 @@
 # Pocket Chronicle
 
-Pocket Chronicle is a lightweight, map-free phone interface for Foundry VTT. It gives players the parts of Foundry they need during play without squeezing the desktop Scene and controls onto a small screen.
+Pocket Chronicle is a lightweight, map-free phone interface for Foundry VTT. It detects phone and touch-sized devices, fills the real mobile viewport, and gives players the parts of Foundry they need without squeezing the desktop Scene and controls onto a small screen.
 
 ## First-release features
 

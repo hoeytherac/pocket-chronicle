@@ -6,6 +6,7 @@ import {
   documentIsVisible,
   formatModifier,
   isCompactViewport,
+  isPhoneDevice,
   makeDiceFormula,
   normalizePrice,
   primaryActiveGM,
@@ -15,6 +16,21 @@ import {
 const TEMPLATE = `modules/${MODULE_ID}/templates/pocket-chronicle.hbs`;
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 let pocketApp;
+
+function applyDeviceMode() {
+  const phone = isPhoneDevice();
+  document.body.classList.toggle("pc-phone-device", phone);
+  if (phone) {
+    let viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) {
+      viewport = document.createElement("meta");
+      viewport.name = "viewport";
+      document.head.append(viewport);
+    }
+    viewport.content = "width=device-width, initial-scale=1, viewport-fit=cover";
+  }
+  return phone;
+}
 
 function getProperty(object, path) {
   return foundry.utils.getProperty(object, path);
@@ -354,6 +370,7 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _onRender(context, options) {
     super._onRender(context, options);
+    applyDeviceMode();
     document.body.classList.add("pc-interface-open");
     const root = this.element;
     root.querySelectorAll("[data-action]").forEach((element) => element.addEventListener("click", (event) => this._handleAction(event)));
@@ -404,6 +421,11 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
       if (action === "roll-die") return this._rollDie(Number(button.dataset.faces));
       if (action === "refresh-chat") return this.render({ force: true });
       if (action === "enable-map-free") return this._enableMapFree();
+      if (action === "try-portrait") return this._tryPortrait();
+      if (action === "continue-landscape") {
+        document.body.classList.add("pc-landscape-allowed");
+        return;
+      }
       if (action === "pick-image") return this._pickImage();
       if (action === "remove-shared") return this._removeSettingEntry("sharedFeed", button.dataset.id);
       if (action === "remove-shop") return this._removeSettingEntry("shopCatalog", button.dataset.id);
@@ -544,6 +566,15 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
     window.location.reload();
   }
 
+  async _tryPortrait() {
+    document.body.classList.remove("pc-landscape-allowed");
+    try {
+      if (screen.orientation?.lock) await screen.orientation.lock("portrait");
+    } catch (_error) {
+      ui.notifications.info("Turn your phone upright to enter portrait mode.");
+    }
+  }
+
   _pickImage() {
     const input = this.element.querySelector("[data-image-form] input[name='image']");
     if (!input || typeof FilePicker !== "function") return;
@@ -667,7 +698,7 @@ function installLauncher() {
   button.type = "button";
   button.title = "Open Pocket Chronicle";
   button.setAttribute("aria-label", "Open Pocket Chronicle");
-  button.innerHTML = '<span aria-hidden="true">🦋</span>';
+  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i>';
   button.addEventListener("click", togglePocket);
   document.body.append(button);
 }
@@ -697,6 +728,7 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
+  applyDeviceMode();
   installLauncher();
   game.socket.on(SOCKET_NAME, async (data) => {
     if (data?.type === "purchase-request" && game.user.isGM && primaryActiveGM()?.id === game.user.id) await fulfillPurchase(data);
@@ -706,6 +738,12 @@ Hooks.once("ready", () => {
     }
   });
   if (isCompactViewport() && game.settings.get(MODULE_ID, "autoOpen")) getPocketApp().render({ force: true });
+});
+
+globalThis.window?.addEventListener?.("resize", debounce(() => applyDeviceMode(), 120));
+globalThis.screen?.orientation?.addEventListener?.("change", () => {
+  document.body.classList.remove("pc-landscape-allowed");
+  applyDeviceMode();
 });
 
 for (const hook of ["createActor", "updateActor", "deleteActor"]) Hooks.on(hook, () => refreshPocket("actor"));

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Replaced the butterfly glyph with a neutral book-and-phone identity.
+- Added reliable phone detection using browser, touch, and physical screen signals.
+- Forced Pocket Chronicle to fill the real phone viewport even when Foundry reports a desktop-sized layout.
+- Added a portrait-orientation screen with an optional landscape override.
+- Improved safe-area and bottom-navigation sizing on phones.
+
 ## 0.1.0
 
 - Added the full-screen phone-first Pocket Chronicle interface.
