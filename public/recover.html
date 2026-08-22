@@ -102,8 +102,8 @@
       <div class="mark" aria-hidden="true">PC</div>
       <p class="eyebrow">Pocket Chronicle recovery</p>
       <h1>Repair this phone</h1>
-      <p id="status">This removes the broken saved website files. Your campaign pairing and character information will stay connected.</p>
-      <button id="repair" type="button">Reset Pocket Chronicle</button>
+      <p id="status">Repairing the saved app files on this phone. Your campaign pairing and character information will stay connected.</p>
+      <button id="repair" type="button" disabled>Repairing…</button>
       <a id="open" href="/" hidden>Open Pocket Chronicle</a>
       <p id="detail">Open this page in Safari or Chrome, not from the frozen Home Screen icon.</p>
     </main>
@@ -113,7 +113,7 @@
       const statusText = document.getElementById("status");
       const detailText = document.getElementById("detail");
 
-      repairButton.addEventListener("click", async () => {
+      async function repairPocketChronicle() {
         repairButton.disabled = true;
         repairButton.textContent = "Repairing…";
         statusText.textContent = "Clearing the old app files from this phone…";
@@ -133,14 +133,18 @@
           repairButton.hidden = true;
           openLink.hidden = false;
           statusText.textContent = "Pocket Chronicle is repaired on this phone.";
-          detailText.textContent = "Tap Open Pocket Chronicle. After it opens normally, replace the old Home Screen icon.";
+          detailText.textContent = "Opening the repaired app now…";
+          window.setTimeout(() => window.location.replace(openLink.href), 350);
         } catch (error) {
           repairButton.disabled = false;
           repairButton.textContent = "Try again";
           statusText.textContent = "The phone did not finish clearing the old files.";
           detailText.textContent = "Keep this page open in Safari or Chrome and tap Try again.";
         }
-      });
+      }
+
+      repairButton.addEventListener("click", repairPocketChronicle);
+      repairPocketChronicle();
     </script>
   </body>
 </html>
