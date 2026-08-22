@@ -1,0 +1,10 @@
+{
+  "POCKET_CHRONICLE.Title": "Pocket Chronicle",
+  "POCKET_CHRONICLE.Subtitle": "A living record carried close",
+  "POCKET_CHRONICLE.Settings.AutoOpen.Name": "Open automatically on phones",
+  "POCKET_CHRONICLE.Settings.AutoOpen.Hint": "Opens Pocket Chronicle after Foundry loads on narrow, touch-sized screens.",
+  "POCKET_CHRONICLE.Settings.ShowLauncher.Name": "Show the Pocket Chronicle button",
+  "POCKET_CHRONICLE.Settings.ShowLauncher.Hint": "Adds a butterfly button on the right edge of Foundry.",
+  "POCKET_CHRONICLE.Settings.CompactChat.Name": "Chat messages shown",
+  "POCKET_CHRONICLE.Settings.CompactChat.Hint": "Limits the number of recent chat messages rendered on a phone for better performance."
+}

@@ -1,0 +1,9 @@
+{
+  "name": "pocket-chronicle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node tools/validate.mjs && node tools/smoke-import.mjs"
+  }
+}

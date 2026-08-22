@@ -1,0 +1,274 @@
+<div class="pc-shell" data-pc-root>
+  <header class="pc-header">
+    <div class="pc-brand">
+      <span class="pc-butterfly" aria-hidden="true">🦋</span>
+      <div>
+        <span class="pc-eyebrow">THE BLUE BUTTERFLY CYCLE</span>
+        <h1>Pocket Chronicle</h1>
+        <p>A living record carried close</p>
+      </div>
+    </div>
+    <button type="button" class="pc-icon-button" data-action="close" aria-label="Close Pocket Chronicle">
+      <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <main class="pc-main">
+    {{#if tabs.home}}
+      <section class="pc-page pc-home-page" aria-labelledby="pc-home-title">
+        <div class="pc-page-heading">
+          <span class="pc-eyebrow">WELCOME BACK</span>
+          <h2 id="pc-home-title">Your adventure, without the map</h2>
+          <p>Pocket Chronicle loads the tools players need and leaves the Scene canvas alone.</p>
+        </div>
+
+        {{#if activeActor}}
+          <article class="pc-hero-card">
+            <img src="{{activeActor.img}}" alt="Portrait of {{activeActor.name}}" loading="lazy" decoding="async">
+            <div class="pc-hero-card__body">
+              <span class="pc-kicker">CURRENT CHARACTER</span>
+              <h3>{{activeActor.name}}</h3>
+              <p>{{activeActor.summary}}</p>
+              <div class="pc-button-row">
+                <button type="button" class="pc-primary" data-action="go" data-tab="sheet">
+                  <i class="fa-solid fa-shield-halved"></i> Open character
+                </button>
+                <button type="button" class="pc-secondary" data-action="native-sheet">
+                  <i class="fa-solid fa-pen-to-square"></i> Edit / Level up
+                </button>
+              </div>
+            </div>
+          </article>
+        {{else}}
+          <div class="pc-empty-state">
+            <i class="fa-solid fa-user-shield"></i>
+            <h3>No character is assigned yet</h3>
+            <p>Ask the GM to give your Foundry user Owner permission for a character.</p>
+          </div>
+        {{/if}}
+
+        <section class="pc-performance-card">
+          <div>
+            <span class="pc-kicker">PHONE PERFORMANCE</span>
+            <h3>{{#if mapFreeEnabled}}Map-Free Mode is enabled{{else}}Make this browser map-free{{/if}}</h3>
+            <p>{{#if mapFreeEnabled}}Foundry will not render its Scene canvas in this browser.{{else}}This optional Foundry setting stops the Scene canvas from rendering on this phone and requires one reload.{{/if}}</p>
+          </div>
+          {{#if canEnableMapFree}}
+            <button type="button" class="pc-secondary" data-action="enable-map-free">
+              <i class="fa-solid fa-leaf"></i> Enable Map-Free Mode
+            </button>
+          {{/if}}
+        </section>
+
+        <section class="pc-section">
+          <div class="pc-section-heading">
+            <div><span class="pc-eyebrow">FROM THE GM</span><h3>Recently shared</h3></div>
+            <button type="button" class="pc-text-button" data-action="go" data-tab="shared">See all</button>
+          </div>
+          {{#if sharedPreview.length}}
+            <div class="pc-horizontal-cards">
+              {{#each sharedPreview}}
+                <button type="button" class="pc-mini-card" data-action="open-shared" data-id="{{id}}">
+                  {{#if image}}<img src="{{image}}" alt="" loading="lazy" decoding="async">{{/if}}
+                  <span>{{title}}</span>
+                </button>
+              {{/each}}
+            </div>
+          {{else}}
+            <p class="pc-muted">Nothing has been shared here yet.</p>
+          {{/if}}
+        </section>
+      </section>
+    {{/if}}
+
+    {{#if tabs.sheet}}
+      <section class="pc-page" aria-labelledby="pc-sheet-title">
+        <div class="pc-sticky-tools">
+          <label class="pc-field pc-grow">
+            <span>Character</span>
+            <select data-action="select-actor">
+              {{#each actors}}
+                <option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>
+              {{/each}}
+            </select>
+          </label>
+          <button type="button" class="pc-secondary pc-compact" data-action="native-sheet" {{#unless activeActor}}disabled{{/unless}}>
+            <i class="fa-solid fa-pen-to-square"></i> Edit / Level Up
+          </button>
+        </div>
+
+        {{#if activeActor}}
+          <div class="pc-character-heading">
+            <img src="{{activeActor.img}}" alt="Portrait of {{activeActor.name}}" loading="lazy" decoding="async">
+            <div><span class="pc-eyebrow">MOBILE CHARACTER SHEET</span><h2 id="pc-sheet-title">{{activeActor.name}}</h2><p>{{activeActor.summary}}</p></div>
+          </div>
+
+          <div class="pc-vitals-grid">
+            <article class="pc-vital pc-vital--hp">
+              <span>HIT POINTS</span>
+              <div class="pc-hp-control">
+                <button type="button" data-action="adjust-hp" data-delta="-1" aria-label="Remove one hit point">−</button>
+                <strong>{{activeActor.hp.value}} / {{activeActor.hp.max}}</strong>
+                <button type="button" data-action="adjust-hp" data-delta="1" aria-label="Add one hit point">+</button>
+              </div>
+              {{#if activeActor.hp.temp}}<small>+{{activeActor.hp.temp}} temporary</small>{{/if}}
+            </article>
+            <article class="pc-vital"><span>ARMOR CLASS</span><strong>{{activeActor.ac}}</strong></article>
+            <article class="pc-vital"><span>SPEED</span><strong>{{activeActor.speed}}</strong></article>
+            <article class="pc-vital"><span>PROFICIENCY</span><strong>{{activeActor.proficiency}}</strong></article>
+          </div>
+
+          <div class="pc-button-row pc-rest-row">
+            <button type="button" class="pc-secondary" data-action="rest" data-rest="short"><i class="fa-solid fa-mug-hot"></i> Short rest</button>
+            <button type="button" class="pc-secondary" data-action="rest" data-rest="long"><i class="fa-solid fa-moon"></i> Long rest</button>
+          </div>
+
+          <section class="pc-section">
+            <div class="pc-section-heading"><div><span class="pc-eyebrow">ROLLS</span><h3>Abilities & saves</h3></div></div>
+            <div class="pc-ability-grid">
+              {{#each activeActor.abilities}}
+                <article class="pc-ability-card">
+                  <span>{{abbr}}</span><strong>{{score}}</strong><small>{{modifier}}</small>
+                  <div><button type="button" data-action="actor-roll" data-kind="ability" data-key="{{key}}">Check</button><button type="button" data-action="actor-roll" data-kind="save" data-key="{{key}}">Save {{save}}</button></div>
+                </article>
+              {{/each}}
+            </div>
+          </section>
+
+          <section class="pc-section">
+            <div class="pc-section-heading"><div><span class="pc-eyebrow">TRAINING</span><h3>Skills</h3></div></div>
+            <div class="pc-list-grid">
+              {{#each activeActor.skills}}
+                <button type="button" class="pc-roll-row" data-action="actor-roll" data-kind="skill" data-key="{{key}}"><span>{{label}}</span><strong>{{modifier}}</strong></button>
+              {{/each}}
+            </div>
+          </section>
+
+          {{#each activeActor.itemSections}}
+            {{#if items.length}}
+              <section class="pc-section">
+                <div class="pc-section-heading"><div><span class="pc-eyebrow">{{eyebrow}}</span><h3>{{label}}</h3></div><span class="pc-count">{{items.length}}</span></div>
+                <div class="pc-item-list">
+                  {{#each items}}
+                    <article class="pc-item-row">
+                      <img src="{{img}}" alt="" loading="lazy" decoding="async">
+                      <button type="button" class="pc-item-name" data-action="open-item" data-item-id="{{id}}"><strong>{{name}}</strong><span>{{detail}}</span></button>
+                      {{#if canUse}}<button type="button" class="pc-use-button" data-action="use-item" data-item-id="{{id}}">Use</button>{{/if}}
+                    </article>
+                  {{/each}}
+                </div>
+              </section>
+            {{/if}}
+          {{/each}}
+        {{else}}
+          <div class="pc-empty-state"><h3>No owned character found</h3><p>Once a GM assigns one, it will appear here automatically.</p></div>
+        {{/if}}
+      </section>
+    {{/if}}
+
+    {{#if tabs.journals}}
+      <section class="pc-page" aria-labelledby="pc-journals-title">
+        {{#if journalView}}
+          <button type="button" class="pc-back-button" data-action="close-journal"><i class="fa-solid fa-arrow-left"></i> All journals</button>
+          <article class="pc-reading-view">
+            <span class="pc-eyebrow">JOURNAL</span>
+            <h2>{{journalView.title}}</h2>
+            {{#if journalView.image}}<img class="pc-feature-image" src="{{journalView.image}}" alt="{{journalView.title}}" loading="lazy" decoding="async">{{/if}}
+            <div class="pc-prose">{{{journalView.html}}}</div>
+          </article>
+        {{else}}
+          <div class="pc-page-heading"><span class="pc-eyebrow">YOUR LIBRARY</span><h2 id="pc-journals-title">Journals</h2><p>Only entries your Foundry user is allowed to see appear here.</p></div>
+          <label class="pc-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Search journals…" data-journal-search></label>
+          <div class="pc-card-list" data-journal-list>
+            {{#each journals}}
+              <article class="pc-journal-card" data-search-text="{{searchText}}">
+                {{#if img}}<img src="{{img}}" alt="" loading="lazy" decoding="async">{{/if}}
+                <div><span class="pc-kicker">{{pageCount}} PAGE{{#if multiplePages}}S{{/if}}</span><h3>{{name}}</h3><p>{{summary}}</p>
+                  <div class="pc-chip-row">{{#each pages}}<button type="button" data-action="open-journal" data-uuid="{{uuid}}">{{name}}</button>{{/each}}</div>
+                </div>
+              </article>
+            {{/each}}
+          </div>
+        {{/if}}
+      </section>
+    {{/if}}
+
+    {{#if tabs.shared}}
+      <section class="pc-page" aria-labelledby="pc-shared-title">
+        {{#if sharedView}}
+          <button type="button" class="pc-back-button" data-action="close-shared"><i class="fa-solid fa-arrow-left"></i> Shared gallery</button>
+          <article class="pc-reading-view"><span class="pc-eyebrow">SHARED BY THE GM</span><h2>{{sharedView.title}}</h2>{{#if sharedView.image}}<img class="pc-feature-image" src="{{sharedView.image}}" alt="{{sharedView.title}}" loading="lazy" decoding="async">{{/if}}<div class="pc-prose">{{{sharedView.html}}}</div></article>
+        {{else}}
+          <div class="pc-page-heading"><span class="pc-eyebrow">FROM BEHIND THE SCREEN</span><h2 id="pc-shared-title">Shared Gallery</h2><p>Handouts, portraits, clues, and journal pages chosen by the GM.</p></div>
+          <div class="pc-gallery">
+            {{#each shared}}
+              <button type="button" class="pc-gallery-card" data-action="open-shared" data-id="{{id}}">{{#if image}}<img src="{{image}}" alt="" loading="lazy" decoding="async">{{/if}}<span class="pc-kicker">{{kindLabel}}</span><strong>{{title}}</strong><small>{{caption}}</small></button>
+            {{else}}
+              <div class="pc-empty-state"><i class="fa-regular fa-images"></i><h3>Nothing shared yet</h3><p>The GM can publish pictures and journal pages from the GM Tools tab.</p></div>
+            {{/each}}
+          </div>
+        {{/if}}
+      </section>
+    {{/if}}
+
+    {{#if tabs.shop}}
+      <section class="pc-page" aria-labelledby="pc-shop-title">
+        <div class="pc-page-heading"><span class="pc-eyebrow">CURATED BY THE GM</span><h2 id="pc-shop-title">Pocket Shop</h2><p>Purchases are fulfilled by the active GM and added to your selected character.</p></div>
+        {{#if activeActor}}<div class="pc-shop-actor"><span>Buying for</span><strong>{{activeActor.name}}</strong></div>{{/if}}
+        <div class="pc-shop-grid">
+          {{#each shop}}
+            <article class="pc-shop-card">
+              <img src="{{img}}" alt="" loading="lazy" decoding="async">
+              <div><span class="pc-kicker">{{typeLabel}}</span><h3>{{title}}</h3><p>{{description}}</p></div>
+              <footer><strong>{{priceLabel}}</strong><button type="button" class="pc-primary" data-action="purchase" data-id="{{id}}" {{#unless ../activeActor}}disabled{{/unless}}>Buy</button></footer>
+            </article>
+          {{else}}
+            <div class="pc-empty-state"><i class="fa-solid fa-store"></i><h3>The shop is closed</h3><p>The GM has not stocked any items yet.</p></div>
+          {{/each}}
+        </div>
+      </section>
+    {{/if}}
+
+    {{#if tabs.chat}}
+      <section class="pc-page pc-chat-page" aria-labelledby="pc-chat-title">
+        <div class="pc-page-heading pc-chat-heading"><div><span class="pc-eyebrow">LIVE TABLE</span><h2 id="pc-chat-title">Chat & Dice</h2></div><button type="button" class="pc-text-button" data-action="refresh-chat"><i class="fa-solid fa-rotate"></i></button></div>
+        <div class="pc-chat-log" data-chat-log aria-live="polite">
+          {{#each messages}}<div class="pc-chat-message" data-message-id="{{id}}">{{{html}}}</div>{{else}}<p class="pc-muted">No messages yet.</p>{{/each}}
+        </div>
+        <div class="pc-dice-tray">
+          <div class="pc-dice-controls">
+            <label>Dice <input type="number" min="1" max="20" value="1" data-dice-count></label>
+            <label>Modifier <input type="number" min="-99" max="99" value="0" data-dice-modifier></label>
+            <label>d20 mode <select data-dice-mode><option value="normal">Normal</option><option value="advantage">Advantage</option><option value="disadvantage">Disadvantage</option></select></label>
+          </div>
+          <div class="pc-dice-buttons">{{#each dice}}<button type="button" data-action="roll-die" data-faces="{{this}}">d{{this}}</button>{{/each}}</div>
+          <form class="pc-formula-form" data-formula-form><input name="formula" placeholder="Custom formula, e.g. 1d20 + 5" aria-label="Custom dice formula"><button type="submit">Roll</button></form>
+        </div>
+        <form class="pc-chat-compose" data-chat-form><textarea name="message" rows="2" placeholder="Message or /roll command…" aria-label="Chat message"></textarea><button type="submit" class="pc-primary"><i class="fa-solid fa-paper-plane"></i><span>Send</span></button></form>
+      </section>
+    {{/if}}
+
+    {{#if tabs.gm}}
+      <section class="pc-page" aria-labelledby="pc-gm-title">
+        <div class="pc-page-heading"><span class="pc-eyebrow">GAME MASTER ONLY</span><h2 id="pc-gm-title">GM Publishing Tools</h2><p>Drag Foundry journal pages and items here. Players receive only what you publish.</p></div>
+        <section class="pc-gm-panel"><div class="pc-section-heading"><div><span class="pc-eyebrow">HANDOUTS & NOTES</span><h3>Shared Gallery</h3></div></div><div class="pc-drop-zone" data-dropzone="shared"><i class="fa-solid fa-book-open"></i><strong>Drop a Journal Entry or page</strong><span>A player-safe snapshot is published; hidden secret sections are removed.</span></div>
+          <form class="pc-admin-form" data-image-form><h4>Or publish an image</h4><label>Title<input name="title" required></label><label>Image path<div class="pc-inline-field"><input name="image" required><button type="button" data-action="pick-image">Browse</button></div></label><label>Caption<textarea name="caption" rows="2"></textarea></label><button type="submit" class="pc-primary">Publish image</button></form>
+          <div class="pc-admin-list">{{#each shared}}<div><span>{{title}}</span><button type="button" data-action="remove-shared" data-id="{{id}}" aria-label="Remove {{title}}"><i class="fa-solid fa-trash"></i></button></div>{{/each}}</div>
+        </section>
+        <section class="pc-gm-panel"><div class="pc-section-heading"><div><span class="pc-eyebrow">SHOP STOCK</span><h3>Pocket Shop</h3></div></div><div class="pc-drop-zone" data-dropzone="shop"><i class="fa-solid fa-sack-dollar"></i><strong>Drop a world Item</strong><span>The item’s name, image, description, and listed price are copied into the catalog.</span></div>
+          <div class="pc-admin-list">{{#each shop}}<div><span><strong>{{title}}</strong> — {{priceLabel}}</span><button type="button" data-action="remove-shop" data-id="{{id}}" aria-label="Remove {{title}}"><i class="fa-solid fa-trash"></i></button></div>{{/each}}</div>
+        </section>
+      </section>
+    {{/if}}
+  </main>
+
+  <nav class="pc-bottom-nav" aria-label="Pocket Chronicle sections">
+    <button type="button" class="{{#if tabs.home}}active{{/if}}" data-action="go" data-tab="home"><i class="fa-solid fa-house"></i><span>Home</span></button>
+    <button type="button" class="{{#if tabs.sheet}}active{{/if}}" data-action="go" data-tab="sheet"><i class="fa-solid fa-shield-halved"></i><span>Sheet</span></button>
+    <button type="button" class="{{#if tabs.journals}}active{{/if}}" data-action="go" data-tab="journals"><i class="fa-solid fa-book"></i><span>Journal</span></button>
+    <button type="button" class="{{#if tabs.shared}}active{{/if}}" data-action="go" data-tab="shared"><i class="fa-regular fa-images"></i><span>Shared</span></button>
+    <button type="button" class="{{#if tabs.shop}}active{{/if}}" data-action="go" data-tab="shop"><i class="fa-solid fa-store"></i><span>Shop</span></button>
+    <button type="button" class="{{#if tabs.chat}}active{{/if}}" data-action="go" data-tab="chat"><i class="fa-solid fa-dice-d20"></i><span>Chat</span></button>
+    {{#if isGM}}<button type="button" class="{{#if tabs.gm}}active{{/if}}" data-action="go" data-tab="gm"><i class="fa-solid fa-wand-magic-sparkles"></i><span>GM</span></button>{{/if}}
+  </nav>
+</div>

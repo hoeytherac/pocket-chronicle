@@ -1,0 +1,35 @@
+name: Publish Foundry Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate manifest version
+        shell: bash
+        run: |
+          manifest_version=$(node -p "require('./module.json').version")
+          if [ "v${manifest_version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match module version v${manifest_version}."
+            exit 1
+          fi
+
+      - name: Build Foundry package
+        shell: bash
+        run: zip -r pocket-chronicle.zip module.json README.md CHANGELOG.md scripts styles templates lang
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" pocket-chronicle.zip module.json --title "Pocket Chronicle ${GITHUB_REF_NAME}" --generate-notes
