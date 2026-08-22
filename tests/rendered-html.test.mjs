@@ -38,10 +38,11 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, layout, manifest, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v056.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
@@ -65,6 +66,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
+  assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\("\/"\)/);
+  assert.match(serviceWorker, /event\.request\.mode === "navigate"/);
   assert.match(schema, /export const tenants/);
   assert.match(schema, /export const playerSessions/);
   assert.match(schema, /export const playerAccounts/);
