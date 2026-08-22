@@ -4,6 +4,7 @@ const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
+let campaignCodeSynced = false;
 const displayedAccessRequests = new Set();
 
 Hooks.once("init", () => {
@@ -63,8 +64,11 @@ Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 Hooks.on("updateUser", () => scheduleSnapshot());
 Hooks.on("renderSettingsConfig", (_application, html) => configureSettingsUi(html));
 Hooks.on("updateSetting", (setting) => {
-  if (setting?.key === `${MODULE_ID}.campaignCode` && shouldRun()) window.setTimeout(() => void syncCampaignCode(true), 250);
+  if (setting?.key !== `${MODULE_ID}.campaignCode`) return;
+  campaignCodeSynced = false;
+  scheduleCampaignCodeSync();
 });
+Hooks.on("closeSettingsConfig", () => scheduleCampaignCodeSync());
 
 function isActiveBridgeHost() {
   if (!game.user?.isGM || !game.settings.get(MODULE_ID, "enabled")) return false;
@@ -105,7 +109,6 @@ function startBridge() {
   const current = config();
   void sendHeartbeat(true).then(async (connected) => {
     if (!connected) return;
-    await syncCampaignCode();
     await pushAllSnapshots();
     await pollAccessRequests();
   });
@@ -120,8 +123,14 @@ async function sendHeartbeat(announce = false) {
   if (!shouldRun() || sendHeartbeat.pending) return false;
   sendHeartbeat.pending = true;
   try {
-    await bridgeFetch("/api/bridge/heartbeat", { method: "POST", body: "{}" });
+    const code = config().campaignCode;
+    const includeCode = !campaignCodeSynced && /^[A-Z0-9]{6}$/.test(code);
+    const result = await bridgeFetch("/api/bridge/heartbeat", {
+      method: "POST",
+      body: JSON.stringify(includeCode ? { campaignCode: code } : {}),
+    });
     bridgeOnline = true;
+    if (result.campaignCodeReady) campaignCodeSynced = true;
     if (announce) ui.notifications.info(`Pocket Chronicle connected to ${game.world.title}.`);
     return true;
   } catch (error) {
@@ -172,12 +181,22 @@ async function syncCampaignCode(announce = false) {
       method: "POST",
       body: JSON.stringify({ code }),
     });
+    campaignCodeSynced = true;
     if (announce || result.changed) ui.notifications.info("Pocket Chronicle Campaign code is ready.");
     return true;
   } catch (error) {
     if (announce) ui.notifications.error(error.message || "Pocket Chronicle could not save the Campaign code.");
     return false;
   }
+}
+
+function scheduleCampaignCodeSync() {
+  window.clearTimeout(scheduleCampaignCodeSync.pending);
+  scheduleCampaignCodeSync.pending = window.setTimeout(async () => {
+    if (!shouldRun()) return;
+    if (!bridgeOnline && !(await sendHeartbeat())) return;
+    await syncCampaignCode(true);
+  }, 500);
 }
 
 function scheduleSnapshot() {

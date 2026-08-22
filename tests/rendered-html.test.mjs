@@ -38,12 +38,15 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, layout, manifest, schema, bridge, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, layout, manifest, schema, bridge, bridgeLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v052.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/security.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_thankful_white_tiger.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0003_flowery_matthew_murdock.sql", import.meta.url), "utf8"),
@@ -68,6 +71,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(schema, /export const phoneAccessRequests/);
   assert.match(bridge, /only the active GM|activeGms/i);
   assert.match(bridge, /api\/bridge\/heartbeat/);
+  assert.match(bridge, /campaignCodeReady/);
   assert.match(bridge, /hasCompleteConfig/);
   assert.match(bridge, /AbortController/);
   assert.match(bridge, /pushAllSnapshots\.pending/);
@@ -77,6 +81,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
+  assert.match(bridgeLoader, /bridge\.js\?v=0\.5\.2/);
+  assert.match(moduleManifest, /bridge-v052\.js/);
+  assert.match(heartbeat, /pairingPasswordHash/);
   assert.match(security, /PBKDF2/);
   assert.match(accountMigration, /CREATE TABLE `player_accounts`/);
   assert.match(accessMigration, /CREATE TABLE `phone_access_requests`/);
