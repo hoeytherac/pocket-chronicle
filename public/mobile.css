@@ -321,6 +321,13 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .hero-card .eyebrow { font-size: 9px; }
 .character-picker { margin-bottom: 14px; }
 
+.identity-card { margin-top: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 18px; background: rgba(20, 27, 37, .86); }
+.identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 16px; }
+.identity-field small { display: block; color: var(--dim); font-size: 9px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.identity-field strong { display: block; margin-top: 3px; color: #dbe5ef; font-size: 13px; line-height: 1.3; }
+.identity-languages { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.45; }
+.identity-languages strong { display: block; margin-bottom: 3px; color: var(--dim); font-size: 9px; letter-spacing: .11em; text-transform: uppercase; }
+
 .session-card { margin-top: 16px; padding: 18px; border-left: 3px solid var(--blue-strong); }
 .session-card h3 { margin: 5px 0; font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 500; }
 .session-card p { margin: 0; }
@@ -338,12 +345,55 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .ability { padding: 13px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: center; }
 .ability span { display: block; color: var(--dim); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .ability strong { display: block; margin-top: 3px; font-size: 19px; }
+.ability small { display: block; margin-top: 2px; color: var(--dim); font-size: 10px; }
+
+.character-quick-actions { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.character-quick-actions button { min-height: 49px; }
+.inspiration-ready { border-color: #8aa9c9; color: #d8e9fa; box-shadow: inset 0 0 18px rgba(92, 134, 176, .14); }
+.inspiration-empty { color: var(--dim); }
+
+.death-card { margin-top: 10px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.death-card > div > strong { display: block; margin-bottom: 5px; font-size: 13px; }
+.death-card small { display: block; margin-top: 2px; font-size: 11px; letter-spacing: .05em; }
+.success-pips { color: #9fc4e7; }
+.failure-pips { color: #c98e93; }
+.death-card button { min-width: 76px; min-height: 43px; border: 1px solid var(--line-bright); border-radius: 12px; background: var(--surface-3); color: var(--blue); font-weight: 700; }
+.death-card button:disabled { opacity: .38; }
+
+.save-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.save-button { min-width: 0; min-height: 47px; padding: 8px 10px; display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; gap: 7px; align-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: #d6e0ea; text-align: left; }
+.save-name { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.save-button > strong { color: var(--blue); font-size: 14px; }
+.proficiency-mark { color: #516073; font-size: 11px; text-align: center; }
+.proficiency-mark.proficient { color: #9fc5e8; }
+
+.skill-list { display: grid; gap: 7px; }
+.skill-button { width: 100%; min-height: 52px; padding: 8px 12px; display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: #d6e0ea; text-align: left; }
+.skill-button > span:nth-child(2) { min-width: 0; }
+.skill-button strong { display: block; font-size: 13px; }
+.skill-button small { display: block; margin-top: 3px; color: var(--dim); font-size: 10px; }
+.skill-modifier { color: var(--blue); font-size: 16px !important; }
+
+.sheet-tabs { margin-bottom: 10px; padding: 4px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; border: 1px solid var(--line); border-radius: 15px; background: #101620; }
+.sheet-tabs button { min-width: 0; min-height: 39px; border: 0; border-radius: 11px; background: transparent; color: var(--dim); font-size: 11px; font-weight: 700; }
+.sheet-tabs button.active { background: #243348; color: #d8e8f7; box-shadow: inset 0 -2px #7599bb; }
 
 .action-list { display: grid; gap: 9px; }
 .action-row { padding: 12px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .action-row strong { font-size: 14px; }
 .action-row small { display: block; margin-top: 3px; color: var(--dim); }
 .action-row button { min-height: 38px; padding: 0 13px; border: 1px solid var(--line-bright); border-radius: 12px; background: var(--surface-3); color: var(--blue); font-weight: 700; }
+.action-row .item-info-button { min-width: 0; flex: 1 1 auto; min-height: 48px; padding: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr) 14px; gap: 10px; align-items: center; border: 0; border-radius: 0; background: transparent; color: inherit; font-weight: 400; text-align: left; }
+.item-info-button img { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px; object-fit: cover; }
+.item-image-fallback { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--blue); background: var(--surface-3); }
+.item-info-button > span:nth-child(2) { min-width: 0; }
+.item-info-button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-chevron { color: var(--blue); font-size: 20px; text-align: right; }
+
+.item-detail { color: #cbd6e0; }
+.item-detail > img { float: left; width: 64px; height: 64px; margin: 0 14px 10px 0; border: 1px solid var(--line-bright); border-radius: 15px; object-fit: cover; }
+.item-detail-subtitle { margin: 5px 0 18px; color: var(--blue); font-size: 13px; }
+.item-detail-copy { clear: both; color: var(--muted); line-height: 1.6; white-space: pre-wrap; }
 
 .hp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .bio-form { margin-top: 18px; }

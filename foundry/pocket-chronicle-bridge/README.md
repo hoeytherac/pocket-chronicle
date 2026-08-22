@@ -18,6 +18,8 @@ If a player forgets that separate password, they can tap **Forgot or reset this 
 
 The bridge does not depend on the Scene canvas. Phone requests, approvals, character data, journals, chat, and actions continue to work when the canvas is disabled.
 
+Version 0.7 adds the full phone-sheet identity, skill, saving throw, initiative, inspiration, and death-save data. Phone rolls use the D&D5e system's own roll methods. Each queued action carries the verified Foundry user ID from the signed-in Pocket Chronicle account, and chat/roll messages are authored by that owning player instead of the active GM.
+
 Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
 
 Share a journal or shop item:

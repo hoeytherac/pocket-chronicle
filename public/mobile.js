@@ -10,6 +10,7 @@
     account: readStoredAccount(),
     bridgeOnline: false,
     selectedJournal: null,
+    sheetCategory: "action",
     campaignId: "",
     campaignCode: "",
     campaignName: "",
@@ -642,10 +643,29 @@
 
   function renderCharacter() {
     var actor = state.snapshot.actor;
+    var identity = actor.identity || { species: actor.ancestry, className: actor.classLabel, languages: [] };
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("Your character", actor.name, actor.ancestry + " · " + actor.classLabel + " · Level " + actor.level));
+    fragment.appendChild(pageTitle("Character sheet", "Your character", "Everything your adventurer carries into the story."));
     var picker = characterPicker();
     if (picker) fragment.appendChild(picker);
+    fragment.appendChild(heroCard());
+
+    var identityCard = create("section", "identity-card");
+    var identityGrid = create("div", "identity-grid");
+    appendIdentity(identityGrid, "Species", identity.species || actor.ancestry);
+    appendIdentity(identityGrid, "Background", identity.background);
+    appendIdentity(identityGrid, "Class", identity.className || actor.classLabel);
+    appendIdentity(identityGrid, "Subclass", identity.subclass);
+    appendIdentity(identityGrid, "Alignment", identity.alignment);
+    appendIdentity(identityGrid, "Size", identity.size);
+    identityCard.appendChild(identityGrid);
+    if ((identity.languages || []).length) {
+      var languages = create("p", "identity-languages");
+      languages.appendChild(create("strong", "", "Languages"));
+      languages.appendChild(document.createTextNode((identity.languages || []).join(", ")));
+      identityCard.appendChild(languages);
+    }
+    fragment.appendChild(identityCard);
 
     var stats = create("div", "stat-grid");
     stats.appendChild(stat("Hit points", actor.hp.value + "/" + actor.hp.max));
@@ -658,35 +678,120 @@
     hp.appendChild(actionButton("+ 1 HP", "adjust-hp", "1"));
     fragment.appendChild(hp);
 
+    var quick = create("div", "character-quick-actions");
+    var initiative = actionButton("Initiative " + signed(actor.initiative || 0), "roll-initiative", "");
+    initiative.classList.add("initiative-button");
+    quick.appendChild(initiative);
+    var inspiration = actionButton(actor.inspiration ? "◆ Inspiration ready" : "◇ No inspiration", "toggle-inspiration", actor.inspiration ? "false" : "true");
+    inspiration.classList.add(actor.inspiration ? "inspiration-ready" : "inspiration-empty");
+    quick.appendChild(inspiration);
+    fragment.appendChild(quick);
+
+    var death = actor.deathSaves || { successes: 0, failures: 0 };
+    var deathCard = create("section", "death-card");
+    var deathCopy = document.createElement("div");
+    deathCopy.appendChild(create("strong", "", "Death saving throws"));
+    deathCopy.appendChild(create("small", "success-pips", "Successes  " + pips(death.successes)));
+    deathCopy.appendChild(create("small", "failure-pips", "Failures  " + pips(death.failures)));
+    deathCard.appendChild(deathCopy);
+    var deathButton = actionButton("Roll", "roll-death-save", "");
+    deathButton.disabled = Number(actor.hp.value) > 0;
+    deathButton.title = deathButton.disabled ? "Death saves become available at 0 HP." : "Roll a death saving throw";
+    deathCard.appendChild(deathButton);
+    fragment.appendChild(deathCard);
+
     fragment.appendChild(sectionHeading("Abilities", "Tap to roll"));
     var abilities = create("div", "ability-grid");
     (actor.abilities || []).forEach(function (ability) {
       var button = create("button", "ability");
       button.type = "button";
-      button.dataset.action = "roll-formula";
-      button.dataset.value = "1d20" + signed(ability.modifier);
+      button.dataset.action = "roll-ability";
+      button.dataset.value = ability.key;
       button.appendChild(create("span", "", ability.label));
       button.appendChild(create("strong", "", signed(ability.modifier)));
+      button.appendChild(create("small", "", String(ability.score)));
       abilities.appendChild(button);
     });
     fragment.appendChild(abilities);
 
-    fragment.appendChild(sectionHeading("Actions", (actor.actions || []).length + " available"));
+    fragment.appendChild(sectionHeading("Saving throws", "Tap to roll"));
+    var saves = create("div", "save-grid");
+    (actor.saves || []).forEach(function (save) {
+      var button = create("button", "save-button");
+      button.type = "button";
+      button.dataset.action = "roll-save";
+      button.dataset.value = save.key;
+      button.appendChild(create("span", save.proficient ? "proficiency-mark proficient" : "proficiency-mark", save.proficient ? "●" : "○"));
+      button.appendChild(create("span", "save-name", save.label));
+      button.appendChild(create("strong", "", signed(save.modifier)));
+      saves.appendChild(button);
+    });
+    if (!(actor.saves || []).length) saves.appendChild(emptyState("Saving throws will appear after the updated Foundry module syncs."));
+    fragment.appendChild(saves);
+
+    fragment.appendChild(sectionHeading("Skills", (actor.skills || []).length + " skills"));
+    var skills = create("div", "skill-list");
+    (actor.skills || []).forEach(function (skill) {
+      var button = create("button", "skill-button");
+      button.type = "button";
+      button.dataset.action = "roll-skill";
+      button.dataset.value = skill.key;
+      button.appendChild(create("span", skill.proficiency > 0 ? "proficiency-mark proficient" : "proficiency-mark", skill.proficiency >= 2 ? "◆" : skill.proficiency > 0 ? "●" : "○"));
+      var copy = document.createElement("span");
+      copy.appendChild(create("strong", "", skill.label));
+      copy.appendChild(create("small", "", String(skill.ability || "").toUpperCase() + " · Passive " + skill.passive));
+      button.appendChild(copy);
+      button.appendChild(create("strong", "skill-modifier", signed(skill.modifier)));
+      skills.appendChild(button);
+    });
+    if (!(actor.skills || []).length) skills.appendChild(emptyState("Skills will appear after the updated Foundry module syncs."));
+    fragment.appendChild(skills);
+
+    fragment.appendChild(sectionHeading("Character features", (actor.actions || []).length + " entries"));
+    var categories = create("div", "sheet-tabs");
+    [["action", "Actions"], ["spell", "Spells"], ["feat", "Feats"]].forEach(function (entry) {
+      var count = (actor.actions || []).filter(function (item) { return (item.category || (item.type === "spell" ? "spell" : item.type === "feat" ? "feat" : "action")) === entry[0]; }).length;
+      var tab = create("button", state.sheetCategory === entry[0] ? "active" : "", entry[1] + " " + count);
+      tab.type = "button";
+      tab.dataset.action = "sheet-category";
+      tab.dataset.value = entry[0];
+      categories.appendChild(tab);
+    });
+    fragment.appendChild(categories);
+
     var actions = create("div", "action-list");
-    (actor.actions || []).forEach(function (item) {
+    var visibleItems = (actor.actions || []).filter(function (item) {
+      var category = item.category || (item.type === "spell" ? "spell" : item.type === "feat" ? "feat" : "action");
+      return category === state.sheetCategory;
+    });
+    visibleItems.forEach(function (item) {
       var row = create("div", "action-row");
+      var info = create("button", "item-info-button");
+      info.type = "button";
+      info.dataset.action = "open-item";
+      info.dataset.value = item.uuid;
+      if (item.image) {
+        var itemImage = document.createElement("img");
+        itemImage.src = item.image;
+        itemImage.alt = "";
+        itemImage.loading = "lazy";
+        info.appendChild(itemImage);
+      } else info.appendChild(create("span", "item-image-fallback", "◇"));
       var copy = document.createElement("span");
       copy.appendChild(create("strong", "", item.name));
-      copy.appendChild(create("small", "", item.type + (item.uses ? " · " + item.uses : "")));
-      row.appendChild(copy);
+      copy.appendChild(create("small", "", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
+      info.appendChild(copy);
+      info.appendChild(create("span", "item-chevron", "›"));
+      row.appendChild(info);
       var button = create("button", "", "Use");
       button.type = "button";
       button.dataset.action = "use-item";
       button.dataset.value = item.uuid;
+      button.dataset.label = item.name;
       row.appendChild(button);
       actions.appendChild(row);
     });
-    if (!(actor.actions || []).length) actions.appendChild(emptyState("No quick actions were shared for this character."));
+    if (!visibleItems.length) actions.appendChild(emptyState("No " + state.sheetCategory + " entries are available for this character."));
     fragment.appendChild(actions);
 
     var bio = create("form", "bio-form");
@@ -706,6 +811,19 @@
     levelButton.dataset.action = "level-up";
     fragment.appendChild(levelButton);
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function appendIdentity(parent, label, value) {
+    if (!value) return;
+    var field = create("div", "identity-field");
+    field.appendChild(create("small", "", label));
+    field.appendChild(create("strong", "", String(value)));
+    parent.appendChild(field);
+  }
+
+  function pips(value) {
+    var amount = Math.max(0, Math.min(3, Number(value) || 0));
+    return "●".repeat(amount) + "○".repeat(3 - amount);
   }
 
   function renderJournal() {
@@ -873,11 +991,28 @@
       state.selectedJournal = null;
       renderJournal();
     } else if (action === "adjust-hp") {
-      sendAction("adjustHp", { amount: Number(button.dataset.value) }, "Hit point change sent to Foundry.");
+      sendAction("adjustHp", { amount: Number(button.dataset.value) }, "Hit points updated in Foundry.");
     } else if (action === "roll-formula") {
-      sendAction("roll", { formula: button.dataset.value }, button.dataset.value + " sent to Foundry.");
+      sendAction("roll", { formula: button.dataset.value }, button.dataset.value + " rolled in Foundry.");
+    } else if (action === "roll-ability") {
+      sendAction("rollAbility", { ability: button.dataset.value }, "Ability check rolled as your player account.");
+    } else if (action === "roll-save") {
+      sendAction("rollSave", { ability: button.dataset.value }, "Saving throw rolled as your player account.");
+    } else if (action === "roll-skill") {
+      sendAction("rollSkill", { skill: button.dataset.value }, "Skill check rolled as your player account.");
+    } else if (action === "roll-initiative") {
+      sendAction("rollInitiative", {}, "Initiative rolled as your player account.");
+    } else if (action === "roll-death-save") {
+      sendAction("rollDeathSave", {}, "Death saving throw completed in Foundry.");
+    } else if (action === "toggle-inspiration") {
+      sendAction("setInspiration", { value: button.dataset.value === "true" }, button.dataset.value === "true" ? "Inspiration marked in Foundry." : "Inspiration spent in Foundry.");
     } else if (action === "use-item") {
-      sendAction("useItem", { itemUuid: button.dataset.value }, "Action sent to Foundry.");
+      sendAction("useItem", { itemUuid: button.dataset.value }, (button.dataset.label || "Item") + " completed in Foundry.");
+    } else if (action === "sheet-category") {
+      state.sheetCategory = button.dataset.value || "action";
+      renderCharacter();
+    } else if (action === "open-item") {
+      openItemDetails(button.dataset.value);
     } else if (action === "level-up") {
       sendAction("requestLevelUp", {}, "Your character edit or level-up request was sent.");
     } else if (action === "purchase") {
@@ -924,13 +1059,62 @@
       showToast(result.data.error || "Foundry could not receive that action yet.", 5000);
       return false;
     }
-    showToast(success, 2800);
-    window.setTimeout(function () { loadState(true); }, 1400);
+    showToast("Waiting for Foundry to finish…", 14000);
+    var actionId = result.data.id;
+    for (var attempt = 0; attempt < 12; attempt += 1) {
+      await delay(750);
+      var status = await api("/api/actions/" + encodeURIComponent(actionId));
+      if (!status.ok) {
+        if (status.status === 401) break;
+        continue;
+      }
+      if (status.data.status === "completed") {
+        showToast(success, 3400);
+        window.setTimeout(function () { loadState(true); }, 600);
+        return true;
+      }
+      if (status.data.status === "failed") {
+        showToast(status.data.result && status.data.result.error ? status.data.result.error : "Foundry could not complete that action.", 6000);
+        return false;
+      }
+    }
+    showToast("The action is queued, but Foundry is taking longer than expected. Check the table before trying it again.", 6500);
+    window.setTimeout(function () { loadState(true); }, 1200);
     return true;
+  }
+
+  function delay(milliseconds) {
+    return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+  }
+
+  function openItemDetails(uuid) {
+    var actor = state.snapshot && state.snapshot.actor;
+    var item = actor && (actor.actions || []).find(function (entry) { return entry.uuid === uuid; });
+    if (!item) return;
+    document.getElementById("modal-title").textContent = item.name;
+    var panel = create("article", "item-detail");
+    if (item.image) {
+      var image = document.createElement("img");
+      image.src = item.image;
+      image.alt = "";
+      panel.appendChild(image);
+    }
+    panel.appendChild(create("p", "eyebrow", item.category || item.type));
+    panel.appendChild(create("p", "item-detail-subtitle", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
+    panel.appendChild(create("p", "item-detail-copy", item.description || "No additional item details were provided in Foundry."));
+    var use = create("button", "primary-button full-button", "Use " + item.name);
+    use.type = "button";
+    use.addEventListener("click", function () {
+      closeSettings();
+      sendAction("useItem", { itemUuid: item.uuid }, item.name + " completed in Foundry.");
+    });
+    elements.modalContent.replaceChildren(panel, use);
+    elements.modal.hidden = false;
   }
 
   function openSettings() {
     if (!state.snapshot) return;
+    document.getElementById("modal-title").textContent = "Phone settings";
     var panel = create("div", "sheet-panel");
     panel.appendChild(create("strong", "", state.account ? state.account.playerLabel : "Player account"));
     panel.appendChild(create("small", "", state.snapshot.campaign.name + " · " + state.characters.length + (state.characters.length === 1 ? " character" : " characters")));

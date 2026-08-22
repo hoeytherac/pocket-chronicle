@@ -16,7 +16,10 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 ## Player experience
 
 - portrait-first phone layout with a clear blue, restrained fantasy style
-- character HP, ability scores, actions, spells, and level-up requests
+- portrait and identity details for species, background, class, subclass, alignment, size, and languages
+- character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
+- separate Actions, Spells, and Feats shelves with tap-to-read item details
+- confirmed Foundry rolls attributed to the verified owning player account
 - GM-shared journal entries and images
 - table chat and d4/d6/d8/d10/d12/d20 rolls
 - GM-curated shop requests

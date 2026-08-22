@@ -6,6 +6,8 @@ const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
 let bridgeLastError = "";
 let bridgeStarted = false;
+let activePhoneUserId = "";
+let activePhoneActorId = "";
 const displayedAccessRequests = new Set();
 
 Hooks.once("init", () => {
@@ -73,6 +75,12 @@ Hooks.on("updateSetting", (setting) => {
   scheduleCampaignCodeSync();
 });
 Hooks.on("closeSettingsConfig", () => scheduleCampaignCodeSync());
+Hooks.on("preCreateChatMessage", (message) => {
+  if (!activePhoneUserId) return;
+  if (activePhoneActorId && message.speaker?.actor !== activePhoneActorId) return;
+  const player = game.users.get(activePhoneUserId);
+  if (player && !player.isGM) message.updateSource({ user: player.id });
+});
 
 function isActiveBridgeHost() {
   // Enabling the module in Module Management is the on/off switch. Avoid a
@@ -268,16 +276,91 @@ function plainText(html = "") {
   return (element.textContent || "").trim();
 }
 
+function assetUrl(source = "") {
+  if (!source) return "";
+  try { return new URL(source, window.location.origin).href; }
+  catch { return source; }
+}
+
+function localized(value, fallback = "") {
+  const label = typeof value === "string" ? value : value?.label;
+  if (!label) return fallback;
+  const translated = game.i18n?.localize(label);
+  return translated && translated !== label ? translated : label;
+}
+
+function detailText(value, fallback = "") {
+  if (typeof value === "string") return value || fallback;
+  if (!value || typeof value !== "object") return fallback;
+  return value.name || value.label || value.custom || value.value || fallback;
+}
+
+function finiteNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return 0;
+}
+
+function itemCategory(item) {
+  if (item.type === "spell") return "spell";
+  if (item.type === "feat") return "feat";
+  return "action";
+}
+
+function itemSubtitle(item) {
+  if (item.type === "spell") {
+    const level = Number(item.system?.level || 0);
+    const school = localized(CONFIG.DND5E?.spellSchools?.[item.system?.school], "");
+    return [level ? `Level ${level}` : "Cantrip", school].filter(Boolean).join(" · ");
+  }
+  const activation = item.system?.activation?.type || item.labels?.activation;
+  return [localized(CONFIG.Item?.typeLabels?.[item.type], item.type), localized(CONFIG.DND5E?.abilityActivationTypes?.[activation], activation || "")].filter(Boolean).join(" · ");
+}
+
 async function buildSnapshot(actor) {
   const system = actor.system || {};
   const classes = actor.items.filter((item) => item.type === "class");
+  const subclasses = actor.items.filter((item) => item.type === "subclass");
+  const speciesItem = actor.items.find((item) => ["species", "race"].includes(item.type));
+  const backgroundItem = actor.items.find((item) => item.type === "background");
   const level = classes.reduce((total, item) => total + Number(item.system?.levels || 0), Number(system.details?.level || 0));
   const abilities = Object.entries(system.abilities || {}).map(([key, ability]) => ({
     key,
-    label: CONFIG.DND5E?.abilities?.[key]?.label || key.toUpperCase(),
+    label: localized(CONFIG.DND5E?.abilities?.[key], key.toUpperCase()),
     score: Number(ability.value || 10),
     modifier: Number(ability.mod || Math.floor((Number(ability.value || 10) - 10) / 2)),
   }));
+  const proficiencyBonus = finiteNumber(system.attributes?.prof);
+  const saves = Object.entries(system.abilities || {}).map(([key, ability]) => {
+    const proficient = Boolean(ability.saveProf?.hasProficiency ?? ability.proficient);
+    return {
+      key,
+      label: localized(CONFIG.DND5E?.abilities?.[key], key.toUpperCase()),
+      modifier: finiteNumber(ability.save?.mod, ability.save?.total, Number(ability.mod || 0) + (proficient ? proficiencyBonus : 0)),
+      proficient,
+    };
+  });
+  const skills = Object.entries(system.skills || {}).map(([key, skill]) => {
+    const ability = skill.ability || CONFIG.DND5E?.skills?.[key]?.ability || "";
+    const proficiency = finiteNumber(skill.value, skill.prof?.multiplier);
+    const fallbackModifier = finiteNumber(system.abilities?.[ability]?.mod) + (proficiencyBonus * proficiency);
+    const modifier = finiteNumber(skill.total, skill.mod, fallbackModifier);
+    return {
+      key,
+      label: localized(CONFIG.DND5E?.skills?.[key], key.toUpperCase()),
+      ability,
+      modifier,
+      passive: finiteNumber(skill.passive, 10 + modifier),
+      proficiency,
+    };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+  const languageValues = Array.from(system.traits?.languages?.value || []).map((key) => localized(CONFIG.DND5E?.languages?.[key], key));
+  const customLanguages = String(system.traits?.languages?.custom || "").split(/[;,]/).map((value) => value.trim()).filter(Boolean);
+  const species = speciesItem?.name || detailText(system.details?.species) || detailText(system.details?.race) || "Adventurer";
+  const className = classes.map((item) => item.name).join(" / ") || "Adventurer";
+  const actionItems = actor.items.filter((item) => ["weapon", "spell", "feat", "consumable", "equipment", "tool"].includes(item.type));
   const journals = game.journal.filter((journal) => journal.getFlag(MODULE_ID, SHARED_FLAG));
   const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG));
   const messages = game.messages.contents.slice(-25).map((message) => ({
@@ -293,26 +376,52 @@ async function buildSnapshot(actor) {
     actor: {
       uuid: actor.uuid,
       name: actor.name,
-      portrait: actor.img,
-      ancestry: system.details?.race || system.details?.species || "Adventurer",
-      classLabel: classes.map((item) => item.name).join(" / ") || "Adventurer",
+      portrait: assetUrl(actor.img),
+      ancestry: species,
+      classLabel: className,
+      identity: {
+        species,
+        background: backgroundItem?.name || detailText(system.details?.background),
+        className,
+        subclass: subclasses.map((item) => item.name).join(" / "),
+        alignment: detailText(system.details?.alignment),
+        size: localized(CONFIG.DND5E?.actorSizes?.[system.traits?.size || system.details?.size], detailText(system.traits?.size || system.details?.size)),
+        languages: [...languageValues, ...customLanguages],
+      },
       level,
       hp: { value: Number(system.attributes?.hp?.value || 0), max: Number(system.attributes?.hp?.max || 0), temp: Number(system.attributes?.hp?.temp || 0) },
       ac: Number(system.attributes?.ac?.value || 10),
       speed: Number(system.attributes?.movement?.walk || 0),
+      initiative: finiteNumber(system.attributes?.init?.mod, system.attributes?.init?.total),
+      inspiration: Boolean(system.attributes?.inspiration),
+      deathSaves: {
+        successes: finiteNumber(system.attributes?.death?.success),
+        failures: finiteNumber(system.attributes?.death?.failure),
+      },
       abilities,
+      saves,
+      skills,
       resources: Object.entries(system.resources || {}).filter(([, value]) => value?.label).map(([key, value]) => ({ key, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0) })),
-      actions: actor.items.filter((item) => ["weapon", "spell", "feat", "consumable"].includes(item.type)).slice(0, 60).map((item) => ({ uuid: item.uuid, name: item.name, type: item.type, uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined })),
+      actions: actionItems.slice(0, 160).map((item) => ({
+        uuid: item.uuid,
+        name: item.name,
+        type: item.type,
+        category: itemCategory(item),
+        subtitle: itemSubtitle(item),
+        description: plainText(item.system?.description?.value || item.system?.description || ""),
+        image: assetUrl(item.img),
+        uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
+      })),
       owners: actorOwners(actor),
       biography: plainText(system.details?.biography?.value || system.details?.biography || ""),
     },
     journals: await Promise.all(journals.map(async (journal) => {
       const pages = journal.pages?.contents || [];
       const content = pages.map((page) => plainText(page.text?.content || "")).filter(Boolean).join("\n\n");
-      return { uuid: journal.uuid, title: journal.name, summary: content.slice(0, 180), content, image: pages.find((page) => page.src)?.src, updatedAt: Number(journal._stats?.modifiedTime || Date.now()) };
+      return { uuid: journal.uuid, title: journal.name, summary: content.slice(0, 180), content, image: assetUrl(pages.find((page) => page.src)?.src), updatedAt: Number(journal._stats?.modifiedTime || Date.now()) };
     })),
     messages,
-    shop: shop.map((item) => ({ uuid: item.uuid, name: item.name, description: plainText(item.system?.description?.value || ""), price: Number(item.system?.price?.value || item.system?.price || 0), currency: item.system?.price?.denomination || "gp", image: item.img })),
+    shop: shop.map((item) => ({ uuid: item.uuid, name: item.name, description: plainText(item.system?.description?.value || ""), price: Number(item.system?.price?.value || item.system?.price || 0), currency: item.system?.price?.denomination || "gp", image: assetUrl(item.img) })),
     session: { title: game.world.title, subtitle: "Shared from Foundry" },
     revision: 0,
     generatedAt: Date.now(),
@@ -333,9 +442,20 @@ async function pollActions() {
 }
 
 async function executeAction(action) {
+  let actingUser = null;
   try {
     const actor = await fromUuid(action.actorUuid);
     if (!actor || actor.documentName !== "Actor") throw new Error("Character not found.");
+    const requestedUser = action.requestedByFoundryUserId ? game.users.get(action.requestedByFoundryUserId) : null;
+    if (requestedUser && !requestedUser.isGM && Number(actor.ownership?.[requestedUser.id] || 0) >= 3) actingUser = requestedUser;
+    activePhoneUserId = actingUser?.id || "";
+    activePhoneActorId = actingUser ? actor.id : "";
+    const messageData = {
+      speaker: ChatMessage.getSpeaker({ actor }),
+      ...(actingUser ? { user: actingUser.id } : {}),
+    };
+    const rollMessage = { data: messageData };
+    const noDialog = { configure: false };
     let result = {};
     switch (action.kind) {
       case "adjustHp": {
@@ -349,19 +469,65 @@ async function executeAction(action) {
       case "useItem": {
         const item = await fromUuid(action.payload.itemUuid);
         if (!item || item.parent?.uuid !== actor.uuid) throw new Error("That item does not belong to this character.");
-        await item.use?.();
+        const usage = await item.use?.({ event: { shiftKey: true } }, noDialog, rollMessage);
+        const hasActivities = Number(item.system?.activities?.size || item.system?.activities?.length || 0) > 0;
+        if (hasActivities && !usage) throw new Error(`${item.name} could not be used. Check its charges, spell slots, or required choices in Foundry.`);
         result = { item: item.name };
         break;
       }
       case "roll": {
         const formula = /^\d+d\d+(?:\s*[+-]\s*\d+)?$/i.test(action.payload.formula) ? action.payload.formula : "1d20";
         const roll = await new Roll(formula).evaluate();
-        await roll.toMessage({ speaker: ChatMessage.getSpeaker({ actor }) });
+        await roll.toMessage(messageData);
         result = { total: roll.total };
         break;
       }
+      case "rollAbility": {
+        const ability = String(action.payload.ability || "");
+        if (!(ability in (actor.system.abilities || {}))) throw new Error("That ability is unavailable.");
+        const rolls = await actor.rollAbilityCheck({ ability }, noDialog, rollMessage);
+        if (!rolls?.length) throw new Error("Foundry did not complete that ability check.");
+        result = { total: rolls[0].total };
+        break;
+      }
+      case "rollSkill": {
+        const skill = String(action.payload.skill || "");
+        if (!(skill in (actor.system.skills || {}))) throw new Error("That skill is unavailable.");
+        const rolls = await actor.rollSkill({ skill }, noDialog, rollMessage);
+        if (!rolls?.length) throw new Error("Foundry did not complete that skill check.");
+        result = { total: rolls[0].total };
+        break;
+      }
+      case "rollSave": {
+        const ability = String(action.payload.ability || "");
+        if (!(ability in (actor.system.abilities || {}))) throw new Error("That saving throw is unavailable.");
+        const rolls = await actor.rollSavingThrow({ ability }, noDialog, rollMessage);
+        if (!rolls?.length) throw new Error("Foundry did not complete that saving throw.");
+        result = { total: rolls[0].total };
+        break;
+      }
+      case "rollInitiative": {
+        const roll = actor.getInitiativeRoll?.();
+        if (!roll) throw new Error("Initiative is unavailable for this character.");
+        await roll.evaluate();
+        await roll.toMessage({ ...messageData, flavor: game.i18n.localize("DND5E.Initiative") });
+        result = { total: roll.total };
+        break;
+      }
+      case "rollDeathSave": {
+        const rolls = await actor.rollDeathSave({}, noDialog, rollMessage);
+        if (!rolls?.length) throw new Error("A death save is only available at 0 HP before three results are marked.");
+        result = { total: rolls[0].total };
+        break;
+      }
+      case "setInspiration": {
+        const value = Boolean(action.payload.value);
+        await actor.update({ "system.attributes.inspiration": value });
+        result = { value };
+        break;
+      }
       case "chat":
-        await ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor }), content: foundry.utils.escapeHTML(String(action.payload.content || "").slice(0, 2000)) });
+        await ChatMessage.create({ ...messageData, content: foundry.utils.escapeHTML(String(action.payload.content || "").slice(0, 2000)) });
         break;
       case "purchase": {
         const item = await fromUuid(action.payload.itemUuid);
@@ -371,10 +537,10 @@ async function executeAction(action) {
         break;
       }
       case "updateBiography":
-        await actor.update({ "system.details.biography.value": foundry.utils.escapeHTML(String(action.payload.content || "").slice(0, 12000)) });
+        await actor.update({ "system.details.biography.value": foundry.utils.escapeHTML(String(action.payload.biography || "").slice(0, 12000)) });
         break;
       case "requestLevelUp":
-        await ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM").map((user) => user.id), content: `<strong>${actor.name}</strong> requested a character edit or level up from Pocket Chronicle.` });
+        await ChatMessage.create({ ...messageData, whisper: ChatMessage.getWhisperRecipients("GM").map((user) => user.id), content: `<strong>${actor.name}</strong> requested a character edit or level up from Pocket Chronicle.` });
         ui.notifications.info(`${actor.name} requested a character edit or level up.`);
         break;
       default:
@@ -384,6 +550,9 @@ async function executeAction(action) {
     scheduleSnapshot();
   } catch (error) {
     await completeAction(action.id, false, {}, error.message || String(error));
+  } finally {
+    activePhoneUserId = "";
+    activePhoneActorId = "";
   }
 }
 

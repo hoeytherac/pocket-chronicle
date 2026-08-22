@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { actions } from "@/db/schema";
+import { actions, playerAccounts, playerSessions } from "@/db/schema";
 import { jsonError, requireBridge } from "@/lib/server-auth";
 
 export async function GET(request: Request) {
@@ -9,8 +9,17 @@ export async function GET(request: Request) {
 
   const db = getDb();
   const pending = await db
-    .select()
+    .select({
+      id: actions.id,
+      actorUuid: actions.actorUuid,
+      kind: actions.kind,
+      payloadJson: actions.payloadJson,
+      createdAt: actions.createdAt,
+      requestedByFoundryUserId: playerAccounts.foundryUserId,
+    })
     .from(actions)
+    .leftJoin(playerSessions, eq(actions.sessionId, playerSessions.id))
+    .leftJoin(playerAccounts, eq(playerSessions.accountId, playerAccounts.id))
     .where(and(eq(actions.campaignId, bridge.campaignId), eq(actions.status, "pending")))
     .orderBy(asc(actions.createdAt))
     .limit(20);
@@ -27,6 +36,7 @@ export async function GET(request: Request) {
       kind: action.kind,
       payload: JSON.parse(action.payloadJson),
       createdAt: action.createdAt,
+      requestedByFoundryUserId: action.requestedByFoundryUserId || undefined,
     })),
   });
 }

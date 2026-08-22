@@ -5,6 +5,12 @@ export type ChronicleActionKind =
   | "adjustHp"
   | "useItem"
   | "roll"
+  | "rollAbility"
+  | "rollSkill"
+  | "rollSave"
+  | "rollInitiative"
+  | "rollDeathSave"
+  | "setInspiration"
   | "chat"
   | "purchase"
   | "updateBiography"
@@ -16,13 +22,43 @@ export interface ChronicleActor {
   portrait?: string;
   ancestry: string;
   classLabel: string;
+  identity?: {
+    species: string;
+    background?: string;
+    className?: string;
+    subclass?: string;
+    alignment?: string;
+    size?: string;
+    languages?: string[];
+  };
   level: number;
   hp: { value: number; max: number; temp?: number };
   ac: number;
   speed: number;
+  initiative?: number;
+  inspiration?: boolean;
+  deathSaves?: { successes: number; failures: number };
   abilities: Array<{ key: string; label: string; score: number; modifier: number }>;
+  saves?: Array<{ key: string; label: string; modifier: number; proficient: boolean }>;
+  skills?: Array<{
+    key: string;
+    label: string;
+    ability: string;
+    modifier: number;
+    passive: number;
+    proficiency: number;
+  }>;
   resources: Array<{ key: string; label: string; value: number; max: number }>;
-  actions: Array<{ uuid: string; name: string; type: string; uses?: string }>;
+  actions: Array<{
+    uuid: string;
+    name: string;
+    type: string;
+    category?: "action" | "spell" | "feat";
+    subtitle?: string;
+    description?: string;
+    image?: string;
+    uses?: string;
+  }>;
   owners?: Array<{ userId: string; name: string }>;
   biography?: string;
 }
@@ -79,12 +115,19 @@ export interface QueuedChronicleAction {
   kind: ChronicleActionKind;
   payload: Record<string, unknown>;
   createdAt: number;
+  requestedByFoundryUserId?: string;
 }
 
 export const allowedActionKinds = new Set<ChronicleActionKind>([
   "adjustHp",
   "useItem",
   "roll",
+  "rollAbility",
+  "rollSkill",
+  "rollSave",
+  "rollInitiative",
+  "rollDeathSave",
+  "setInspiration",
   "chat",
   "purchase",
   "updateBiography",
