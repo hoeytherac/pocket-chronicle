@@ -1,5 +1,6 @@
 const textEncoder = new TextEncoder();
-const PASSWORD_ITERATIONS = 120000;
+// Cloudflare Workers supports PBKDF2 iteration counts up to 100,000.
+const PASSWORD_ITERATIONS = 100000;
 
 export async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(value));
@@ -54,7 +55,7 @@ export async function hashPassword(password: string) {
 export async function verifyPassword(password: string, stored: string) {
   const [algorithm, iterationsText, salt, expected] = stored.split(":");
   const iterations = Number(iterationsText);
-  if (algorithm !== "pbkdf2" || !iterations || !salt || !expected) return false;
+  if (algorithm !== "pbkdf2" || !iterations || iterations > PASSWORD_ITERATIONS || !salt || !expected) return false;
   const actual = await derivePassword(password, salt, iterations);
   if (actual.length !== expected.length) return false;
   let difference = 0;
