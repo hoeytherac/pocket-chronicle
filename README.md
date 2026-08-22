@@ -1,6 +1,6 @@
 # Pocket Chronicle
 
-Pocket Chronicle is a lightweight, map-free phone interface for Foundry VTT. It detects phone and touch-sized devices, fills the real mobile viewport, and gives players the parts of Foundry they need without squeezing the desktop Scene and controls onto a small screen.
+Pocket Chronicle is an experimental, map-free interface for Foundry VTT. It gives players a compact view of the parts of Foundry they need without intentionally using the Scene canvas. Foundry's core client does not officially support phones, so this in-world module cannot prevent failures that occur before modules finish loading.
 
 ## First-release features
 
@@ -20,7 +20,7 @@ Pocket Chronicle is a lightweight, map-free phone interface for Foundry VTT. It 
 1. Create a folder named `pocket-chronicle` inside Foundry's `Data/modules` folder.
 2. Copy this repository's contents into that folder.
 3. Restart Foundry, enable **Pocket Chronicle** in the world, and reload.
-4. Open it with the blue butterfly button or the **P** key.
+4. Open it with the phone button or the **P** key. It no longer opens automatically on mobile browsers.
 
 For the best phone performance, open the Home tab once and choose **Enable Map-Free Mode**. That is a client-only Foundry preference, so it affects the phone browser without disabling the map on the GM's computer.
 

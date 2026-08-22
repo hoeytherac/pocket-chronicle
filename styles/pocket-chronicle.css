@@ -99,10 +99,6 @@ body.pc-interface-open #board {
   font-size: 19px;
 }
 
-.pc-rotate-notice {
-  display: none;
-}
-
 .pc-brand h1,
 .pc-page h2,
 .pc-page h3,
@@ -1267,50 +1263,6 @@ body.pc-phone-device .pc-header {
 body.pc-phone-device .pc-bottom-nav {
   grid-auto-columns: minmax(52px, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
-}
-
-@media (orientation: landscape) {
-  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice {
-    position: absolute;
-    z-index: 50;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    align-content: center;
-    gap: 13px;
-    padding: max(24px, env(safe-area-inset-top)) max(28px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(28px, env(safe-area-inset-left));
-    color: var(--pc-ink);
-    background:
-      radial-gradient(circle at 50% 36%, rgba(26, 126, 207, 0.3), transparent 34%),
-      linear-gradient(150deg, #071c35, #020812 72%);
-    text-align: center;
-  }
-
-  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice h2 {
-    color: var(--pc-gold-soft);
-    font-size: clamp(29px, 7vh, 46px);
-  }
-
-  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice p {
-    max-width: 430px;
-    margin: 0;
-    color: var(--pc-sky);
-  }
-
-  body.pc-phone-device:not(.pc-landscape-allowed) .pc-phone-outline {
-    display: grid;
-    place-items: center;
-    width: 58px;
-    height: 78px;
-    border: 2px solid var(--pc-gold);
-    border-radius: 12px;
-    color: var(--pc-blue-bright);
-    font-size: 28px;
-  }
-
-  body.pc-phone-device:not(.pc-landscape-allowed) .pc-rotate-notice .pc-primary {
-    min-width: 190px;
-  }
 }
 
 @media (max-width: 520px) {

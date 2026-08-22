@@ -1,8 +1,15 @@
 # Changelog
 
+## 0.1.2
+
+- Removed all remaining campaign-specific iconography and wording.
+- Removed automatic phone opening, viewport mutation, and orientation locking.
+- Kept device-aware full-screen styling without changing the browser's own viewport settings.
+- Marked the in-world mobile interface as experimental because Foundry core does not officially support mobile browsers.
+
 ## 0.1.1
 
-- Replaced the butterfly glyph with a neutral book-and-phone identity.
+- Replaced the original campaign glyph with a neutral book-and-phone identity.
 - Added reliable phone detection using browser, touch, and physical screen signals.
 - Forced Pocket Chronicle to fill the real phone viewport even when Foundry reports a desktop-sized layout.
 - Added a portrait-orientation screen with an optional landscape override.

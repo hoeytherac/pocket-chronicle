@@ -5,7 +5,6 @@ import {
   debounce,
   documentIsVisible,
   formatModifier,
-  isCompactViewport,
   isPhoneDevice,
   makeDiceFormula,
   normalizePrice,
@@ -20,15 +19,6 @@ let pocketApp;
 function applyDeviceMode() {
   const phone = isPhoneDevice();
   document.body.classList.toggle("pc-phone-device", phone);
-  if (phone) {
-    let viewport = document.querySelector('meta[name="viewport"]');
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.name = "viewport";
-      document.head.append(viewport);
-    }
-    viewport.content = "width=device-width, initial-scale=1, viewport-fit=cover";
-  }
   return phone;
 }
 
@@ -421,11 +411,6 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
       if (action === "roll-die") return this._rollDie(Number(button.dataset.faces));
       if (action === "refresh-chat") return this.render({ force: true });
       if (action === "enable-map-free") return this._enableMapFree();
-      if (action === "try-portrait") return this._tryPortrait();
-      if (action === "continue-landscape") {
-        document.body.classList.add("pc-landscape-allowed");
-        return;
-      }
       if (action === "pick-image") return this._pickImage();
       if (action === "remove-shared") return this._removeSettingEntry("sharedFeed", button.dataset.id);
       if (action === "remove-shop") return this._removeSettingEntry("shopCatalog", button.dataset.id);
@@ -566,15 +551,6 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
     window.location.reload();
   }
 
-  async _tryPortrait() {
-    document.body.classList.remove("pc-landscape-allowed");
-    try {
-      if (screen.orientation?.lock) await screen.orientation.lock("portrait");
-    } catch (_error) {
-      ui.notifications.info("Turn your phone upright to enter portrait mode.");
-    }
-  }
-
   _pickImage() {
     const input = this.element.querySelector("[data-image-form] input[name='image']");
     if (!input || typeof FilePicker !== "function") return;
@@ -657,11 +633,6 @@ class PocketChronicleApp extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 
 function registerSettings() {
-  game.settings.register(MODULE_ID, "autoOpen", {
-    name: "POCKET_CHRONICLE.Settings.AutoOpen.Name",
-    hint: "POCKET_CHRONICLE.Settings.AutoOpen.Hint",
-    scope: "client", config: true, type: Boolean, default: true
-  });
   game.settings.register(MODULE_ID, "showLauncher", {
     name: "POCKET_CHRONICLE.Settings.ShowLauncher.Name",
     hint: "POCKET_CHRONICLE.Settings.ShowLauncher.Hint",
@@ -737,13 +708,6 @@ Hooks.once("ready", () => {
       refreshPocket("actor");
     }
   });
-  if (isCompactViewport() && game.settings.get(MODULE_ID, "autoOpen")) getPocketApp().render({ force: true });
-});
-
-globalThis.window?.addEventListener?.("resize", debounce(() => applyDeviceMode(), 120));
-globalThis.screen?.orientation?.addEventListener?.("change", () => {
-  document.body.classList.remove("pc-landscape-allowed");
-  applyDeviceMode();
 });
 
 for (const hook of ["createActor", "updateActor", "deleteActor"]) Hooks.on(hook, () => refreshPocket("actor"));

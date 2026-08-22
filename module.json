@@ -2,7 +2,7 @@
   "id": "pocket-chronicle",
   "title": "Pocket Chronicle",
   "description": "A lightweight, map-free phone experience for character sheets, journals, shared handouts, chat, dice, and a GM-curated shop.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "compatibility": {
     "minimum": "13",
     "verified": "13",
@@ -15,7 +15,7 @@
   ],
   "url": "https://github.com/hoeytherac/pocket-chronicle",
   "manifest": "https://github.com/hoeytherac/pocket-chronicle/releases/latest/download/module.json",
-  "download": "https://github.com/hoeytherac/pocket-chronicle/releases/download/v0.1.1/pocket-chronicle.zip",
+  "download": "https://github.com/hoeytherac/pocket-chronicle/releases/download/v0.1.2/pocket-chronicle.zip",
   "readme": "https://github.com/hoeytherac/pocket-chronicle/blob/main/README.md",
   "changelog": "https://github.com/hoeytherac/pocket-chronicle/blob/main/CHANGELOG.md",
   "esmodules": [
