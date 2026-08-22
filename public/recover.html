@@ -104,7 +104,7 @@
       <h1>Repair this phone</h1>
       <p id="status">Repairing the saved app files on this phone. Your campaign pairing and character information will stay connected.</p>
       <button id="repair" type="button" disabled>Repairing…</button>
-      <a id="open" href="/" hidden>Open Pocket Chronicle</a>
+      <a id="open" href="/mobile.html" hidden>Open Pocket Chronicle</a>
       <p id="detail">Open this page in Safari or Chrome, not from the frozen Home Screen icon.</p>
     </main>
     <script>
@@ -129,7 +129,7 @@
             await Promise.all(keys.map((key) => caches.delete(key)));
           }
 
-          openLink.href = "/?recovered=" + Date.now();
+          openLink.href = "/mobile.html?recovered=" + Date.now();
           repairButton.hidden = true;
           openLink.hidden = false;
           statusText.textContent = "Pocket Chronicle is repaired on this phone.";

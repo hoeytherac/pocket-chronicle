@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#10131a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pocket Chronicle">
+    <meta name="format-detection" content="telephone=no">
+    <title>Pocket Chronicle</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icon-180.png">
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/mobile.css?v=1">
+    <script src="/mobile.js?v=1" defer></script>
+  </head>
+  <body>
+    <main id="chronicle" class="phone-shell" aria-live="polite">
+      <header class="app-header">
+        <button id="brand-home" class="brand" type="button" aria-label="Pocket Chronicle home">
+          <span class="brand-mark" aria-hidden="true">PC</span>
+          <span class="brand-copy"><small>Foundry companion</small><strong>Pocket Chronicle</strong></span>
+        </button>
+        <button id="account-button" class="round-button" type="button" aria-label="Account settings" hidden>•••</button>
+      </header>
+
+      <section id="status-strip" class="status-strip" hidden>
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-label">Checking your table…</span>
+      </section>
+
+      <section id="gate" class="gate-view">
+        <span class="gate-sigil" aria-hidden="true">◇</span>
+        <p class="eyebrow">Secure table connection</p>
+        <h1 id="gate-title">Checking your table…</h1>
+        <p id="gate-copy" class="muted">Looking for your saved Pocket Chronicle account.</p>
+        <div id="gate-content" class="gate-content">
+          <div class="loading-line" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section id="app-view" class="app-view" hidden>
+        <div id="view-content" class="view-content"></div>
+        <nav class="bottom-nav" aria-label="Primary navigation">
+          <button type="button" data-tab="home" class="active"><span aria-hidden="true">⌂</span><small>Home</small></button>
+          <button type="button" data-tab="character"><span aria-hidden="true">◇</span><small>Sheet</small></button>
+          <button type="button" data-tab="journal"><span aria-hidden="true">▤</span><small>Journal</small></button>
+          <button type="button" data-tab="chat"><span aria-hidden="true">◌</span><small>Chat</small></button>
+          <button type="button" data-tab="shop"><span aria-hidden="true">♢</span><small>Shop</small></button>
+        </nav>
+      </section>
+
+      <footer id="gate-footer" class="gate-footer">No Foundry password or Scene canvas is sent to this phone.</footer>
+    </main>
+
+    <div id="modal" class="modal" hidden>
+      <button id="modal-close-area" class="modal-scrim" type="button" aria-label="Close"></button>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <span class="modal-handle" aria-hidden="true"></span>
+        <p class="eyebrow">Pocket Chronicle</p>
+        <h2 id="modal-title">Phone settings</h2>
+        <div id="modal-content"></div>
+        <button id="modal-done" class="secondary-button full-button" type="button">Done</button>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+    <noscript><p class="no-script">Pocket Chronicle needs JavaScript enabled to connect to your Foundry account.</p></noscript>
+  </body>
+</html>

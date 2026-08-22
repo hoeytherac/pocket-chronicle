@@ -38,8 +38,11 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/recover.html", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
@@ -68,10 +71,19 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/\?pwa=12"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=13"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
+  assert.match(mobile, /mobile\.js\?v=1/);
+  assert.match(mobile, /Foundry companion/i);
+  assert.doesNotMatch(mobile, /butterfly/i);
+  assert.match(mobileScript, /\/api\/campaign\/connect/);
+  assert.match(mobileScript, /\/api\/sign-in/);
+  assert.match(mobileScript, /requestLevelUp/);
+  assert.match(mobileScript, /updateBiography/);
+  assert.doesNotMatch(mobileScript, /location\.(?:replace|reload)/);
+  assert.match(recovery, /\/mobile\.html\?recovered=/);
   assert.match(schema, /export const tenants/);
   assert.match(schema, /export const playerSessions/);
   assert.match(schema, /export const playerAccounts/);
