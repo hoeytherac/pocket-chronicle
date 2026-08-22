@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     .select({
       id: playerAccounts.id,
       playerLabel: playerAccounts.playerLabel,
+      credentialHash: playerAccounts.credentialHash,
       actorUuid: playerAccountCharacters.actorUuid,
     })
     .from(playerAccounts)
@@ -31,11 +32,11 @@ export async function POST(request: Request) {
     .where(and(eq(playerAccounts.campaignId, campaign.id), eq(playerAccounts.active, true)));
 
   const accounts = Array.from(rows.reduce((entries, row) => {
-    const current = entries.get(row.id) || { id: row.id, playerLabel: row.playerLabel, characterCount: 0 };
+    const current = entries.get(row.id) || { id: row.id, playerLabel: row.playerLabel, characterCount: 0, hasPassword: Boolean(row.credentialHash) };
     current.characterCount += 1;
     entries.set(row.id, current);
     return entries;
-  }, new Map<string, { id: string; playerLabel: string; characterCount: number }>()).values())
+  }, new Map<string, { id: string; playerLabel: string; characterCount: number; hasPassword: boolean }>()).values())
     .sort((left, right) => left.playerLabel.localeCompare(right.playerLabel));
 
   if (accounts.length === 0) return jsonError("No Foundry player accounts own a character yet. Ask the GM to assign Owner permission.", 409);

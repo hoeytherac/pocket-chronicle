@@ -58,9 +58,11 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(page, /Foundry is offline/);
   assert.match(page, /requestLevelUp/);
   assert.match(page, /Install on this phone/);
-  assert.match(page, /Pocket Chronicle password/);
+  assert.match(page, /Pocket Chronicle account password/);
+  assert.match(page, /No GM approval is needed/);
   assert.match(page, /six-character Campaign code/);
-  assert.match(page, /Request GM approval/);
+  assert.match(page, /Continue with password/);
+  assert.match(page, /Request first-time approval/);
   assert.match(page, /characters\.map/);
   assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(manifest, /"orientation": "portrait-primary"/);

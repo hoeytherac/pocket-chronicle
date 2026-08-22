@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const [account] = await db
-    .select({ id: playerAccounts.id, playerLabel: playerAccounts.playerLabel, actorUuid: playerAccountCharacters.actorUuid })
+    .select({ id: playerAccounts.id, playerLabel: playerAccounts.playerLabel, actorUuid: playerAccountCharacters.actorUuid, credentialHash: playerAccounts.credentialHash })
     .from(playerAccounts)
     .innerJoin(playerAccountCharacters, eq(playerAccountCharacters.accountId, playerAccounts.id))
     .where(and(
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     ))
     .limit(1);
   if (!account) return jsonError("That Foundry player account is unavailable.", 404);
+  if (account.credentialHash) return jsonError("That account already has a password and does not need GM approval.", 409);
 
   const requestToken = randomToken();
   const now = Date.now();

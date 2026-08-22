@@ -14,7 +14,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       status: phoneAccessRequests.status,
       expiresAt: phoneAccessRequests.expiresAt,
       playerLabel: playerAccounts.playerLabel,
-      needsPasswordSetup: playerAccounts.credentialHash,
     })
     .from(phoneAccessRequests)
     .innerJoin(playerAccounts, eq(phoneAccessRequests.accountId, playerAccounts.id))
@@ -26,6 +25,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   return Response.json({
     status: accessRequest.status,
     playerLabel: accessRequest.playerLabel,
-    needsPasswordSetup: !accessRequest.needsPasswordSetup,
   });
 }

@@ -6,13 +6,13 @@ import { hasProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
 import type { Edition, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
-import { hashPassword, sha256, verifyPassword } from "@/lib/security";
+import { hashPassword, sha256 } from "@/lib/security";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { requestToken?: string; password?: string } | null;
-  if (!body?.requestToken || !body.password) return jsonError("Enter your Pocket Chronicle password.", 400);
-  if (body.password.length < 8 || body.password.length > 128) return jsonError("Use a Pocket Chronicle password with at least eight characters.", 400);
+  if (!body?.requestToken || !body.password) return jsonError("Create an account password to finish the first setup.", 400);
+  if (body.password.length < 6 || body.password.length > 128) return jsonError("Use an account password with at least six characters.", 400);
 
   const db = getDb();
   const [accessRequest] = await db
@@ -46,13 +46,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return jsonError("That approved phone request is no longer available.", 403);
   }
   if (!isBridgeOnline(accessRequest.lastSeenAt)) return jsonError("That Foundry world is offline.", 503);
+  if (accessRequest.credentialHash) return jsonError("That account already has a password. Return to sign in without GM approval.", 409);
 
-  if (accessRequest.credentialHash) {
-    if (!(await verifyPassword(body.password, accessRequest.credentialHash))) return jsonError("That Pocket Chronicle password is incorrect.", 401);
-  } else {
-    await db.update(playerAccounts).set({ credentialHash: await hashPassword(body.password), updatedAt: Date.now() })
-      .where(eq(playerAccounts.id, accessRequest.accountId));
-  }
+  await db.update(playerAccounts).set({ credentialHash: await hashPassword(body.password), updatedAt: Date.now() })
+    .where(eq(playerAccounts.id, accessRequest.accountId));
 
   const session = await createPlayerAccountSession(accessRequest.accountId, accessRequest.campaignId);
   if (!session) return jsonError("That Foundry account does not currently own any characters.", 409);
