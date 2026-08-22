@@ -43,6 +43,7 @@ export async function requirePlayerSession(request: Request) {
     .select({
       sessionId: playerSessions.id,
       actorUuid: playerSessions.actorUuid,
+      accountId: playerSessions.accountId,
       campaignId: campaigns.id,
       lastSeenAt: campaigns.lastSeenAt,
       tenantId: tenants.id,

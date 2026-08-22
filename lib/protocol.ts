@@ -23,7 +23,17 @@ export interface ChronicleActor {
   abilities: Array<{ key: string; label: string; score: number; modifier: number }>;
   resources: Array<{ key: string; label: string; value: number; max: number }>;
   actions: Array<{ uuid: string; name: string; type: string; uses?: string }>;
+  owners?: Array<{ userId: string; name: string }>;
   biography?: string;
+}
+
+export interface ChronicleCharacterChoice {
+  uuid: string;
+  name: string;
+  portrait?: string;
+  ancestry: string;
+  classLabel: string;
+  level: number;
 }
 
 export interface ChronicleJournal {

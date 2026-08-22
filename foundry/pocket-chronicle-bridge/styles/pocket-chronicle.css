@@ -1,0 +1,37 @@
+.pocket-chronicle-pairing-control .form-fields button {
+  border-color: #6f8faf;
+  color: #d6e9f7;
+  background: linear-gradient(145deg, #314b66, #20354b);
+}
+
+.pocket-chronicle-player-picker {
+  display: grid;
+  gap: 12px;
+}
+
+.pocket-chronicle-player-picker p,
+.pocket-chronicle-code-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pocket-chronicle-player-picker select {
+  min-height: 42px;
+}
+
+.pocket-chronicle-code-card {
+  display: grid;
+  gap: 14px;
+  text-align: center;
+}
+
+.pocket-chronicle-code-card strong {
+  display: block;
+  padding: 16px;
+  border: 1px solid #6f8faf;
+  border-radius: 10px;
+  color: #d6e9f7;
+  background: #13283c;
+  font-size: 30px;
+  letter-spacing: .18em;
+}

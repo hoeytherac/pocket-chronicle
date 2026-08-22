@@ -24,7 +24,9 @@ The same bridge package works from any HTTPS Foundry host. Each campaign receive
 
 - `tenants` separates DMs and carries edition/subscription state.
 - `campaigns` belongs to exactly one tenant and stores only a hash of its bridge key.
-- `pairing_codes` are single-use and expire after ten minutes.
+- `player_accounts` map existing Foundry users to salted Pocket Chronicle password hashes without copying Foundry credentials.
+- `player_account_characters` records every character the Foundry user currently owns.
+- `account_pairing_codes` are account-specific, single-use, and expire after ten minutes.
 - `player_sessions` store only hashed opaque tokens and expire after thirty days.
 - `snapshots` are isolated by tenant, campaign, and Actor UUID.
 - `actions` are isolated by tenant, campaign, character, and paired player session.
@@ -33,7 +35,7 @@ Every server-side character query derives tenant and campaign from an authentica
 
 ## Relay behavior
 
-The first release uses short HTTPS polling: approximately two seconds for player actions and thirty seconds for a full snapshot, with event-driven refreshes after Foundry document changes. This is intentionally simple and reliable on serverless hosting. A durable WebSocket service can replace polling later without changing the phone protocol.
+The bridge uses short HTTPS polling: approximately five seconds for player actions and thirty seconds for a full snapshot, with event-driven refreshes after Foundry document changes. This is intentionally simple and reliable on serverless hosting. A durable WebSocket service can replace polling later without changing the phone protocol.
 
 The bridge also sends an authenticated heartbeat every ten seconds. Pairing and phone actions require a heartbeat no older than thirty seconds; otherwise the player sees a locked connection screen.
 

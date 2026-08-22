@@ -1,5 +1,5 @@
-const CACHE = "pocket-chronicle-shell-v3";
-const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
+const CACHE = "pocket-chronicle-shell-v4";
+const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));

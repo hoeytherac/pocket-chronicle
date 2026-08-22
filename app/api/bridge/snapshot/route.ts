@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { snapshots } from "@/db/schema";
+import { playerAccountCharacters, playerAccounts, snapshots } from "@/db/schema";
 import type { ChronicleSnapshot } from "@/lib/protocol";
 import { jsonError, requireBridge } from "@/lib/server-auth";
 
@@ -32,6 +32,46 @@ export async function POST(request: Request) {
       actorUuid: snapshot.actor.uuid,
       revision,
       payloadJson,
+      updatedAt: now,
+    });
+  }
+
+  const owners = Array.from(new Map((snapshot.actor.owners || [])
+    .filter((owner) => owner?.userId && owner.name)
+    .slice(0, 50)
+    .map((owner) => [owner.userId.slice(0, 100), { userId: owner.userId.slice(0, 100), name: owner.name.slice(0, 80) }])).values());
+  await db.delete(playerAccountCharacters).where(and(
+    eq(playerAccountCharacters.campaignId, bridge.campaignId),
+    eq(playerAccountCharacters.actorUuid, snapshot.actor.uuid),
+  ));
+  for (const owner of owners) {
+    const [existingAccount] = await db
+      .select({ id: playerAccounts.id })
+      .from(playerAccounts)
+      .where(and(
+        eq(playerAccounts.campaignId, bridge.campaignId),
+        eq(playerAccounts.foundryUserId, owner.userId),
+      ))
+      .limit(1);
+    const accountId = existingAccount?.id || crypto.randomUUID();
+    if (existingAccount) {
+      await db.update(playerAccounts).set({ playerLabel: owner.name, active: true, updatedAt: now }).where(eq(playerAccounts.id, accountId));
+    } else {
+      await db.insert(playerAccounts).values({
+        id: accountId,
+        campaignId: bridge.campaignId,
+        foundryUserId: owner.userId,
+        playerLabel: owner.name,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    await db.insert(playerAccountCharacters).values({
+      id: crypto.randomUUID(),
+      accountId,
+      campaignId: bridge.campaignId,
+      actorUuid: snapshot.actor.uuid,
       updatedAt: now,
     });
   }

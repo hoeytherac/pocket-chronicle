@@ -1,19 +1,91 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { campaigns, pairingCodes, playerSessions } from "@/db/schema";
+import { accountPairingCodes, campaigns, pairingCodes, playerAccounts, playerSessions, tenants } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
+import { hasProductAccess } from "@/lib/entitlements";
+import { createPlayerAccountSession } from "@/lib/player-account";
+import type { Edition, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
-import { randomToken, sessionCookie, sha256 } from "@/lib/security";
+import { hashPassword, randomToken, sessionCookie, sha256, verifyPassword } from "@/lib/security";
 
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { code?: string } | null;
+  const body = await request.json().catch(() => null) as { code?: string; password?: string } | null;
   const code = body?.code?.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const password = body?.password;
   if (!code || code.length !== 6) return jsonError("Enter the six-character pairing code from your GM.", 400);
 
   const db = getDb();
   const codeHash = await sha256(code);
+  const [accountPairing] = await db
+    .select({
+      pairingId: accountPairingCodes.id,
+      accountId: playerAccounts.id,
+      playerLabel: playerAccounts.playerLabel,
+      credentialHash: playerAccounts.credentialHash,
+      accountActive: playerAccounts.active,
+      campaignId: campaigns.id,
+      campaignName: campaigns.name,
+      campaignStatus: campaigns.status,
+      lastSeenAt: campaigns.lastSeenAt,
+      edition: tenants.edition,
+      subscriptionStatus: tenants.subscriptionStatus,
+    })
+    .from(accountPairingCodes)
+    .innerJoin(playerAccounts, eq(accountPairingCodes.accountId, playerAccounts.id))
+    .innerJoin(campaigns, eq(accountPairingCodes.campaignId, campaigns.id))
+    .innerJoin(tenants, eq(campaigns.tenantId, tenants.id))
+    .where(and(
+      eq(accountPairingCodes.codeHash, codeHash),
+      gt(accountPairingCodes.expiresAt, Date.now()),
+      isNull(accountPairingCodes.consumedAt),
+    ))
+    .limit(1);
+
+  if (accountPairing) {
+    const entitled = hasProductAccess(accountPairing.edition as Edition, accountPairing.subscriptionStatus as SubscriptionStatus);
+    if (!accountPairing.accountActive || !entitled || accountPairing.campaignStatus !== "active") {
+      return jsonError("That Pocket Chronicle account is not currently available.", 403);
+    }
+    if (!isBridgeOnline(accountPairing.lastSeenAt)) {
+      return jsonError("That Foundry module is offline. Ask the GM to open the world and enable Pocket Chronicle.", 503);
+    }
+
+    if (!password) {
+      return Response.json({
+        challenge: true,
+        playerLabel: accountPairing.playerLabel,
+        campaignName: accountPairing.campaignName,
+        needsPasswordSetup: !accountPairing.credentialHash,
+      });
+    }
+    if (password.length < 8 || password.length > 128) {
+      return jsonError("Use a private Pocket Chronicle password with at least eight characters.", 400);
+    }
+    if (accountPairing.credentialHash) {
+      if (!(await verifyPassword(password, accountPairing.credentialHash))) {
+        return jsonError("That Pocket Chronicle password is incorrect.", 401);
+      }
+    } else {
+      await db.update(playerAccounts)
+        .set({ credentialHash: await hashPassword(password), updatedAt: Date.now() })
+        .where(eq(playerAccounts.id, accountPairing.accountId));
+    }
+
+    const session = await createPlayerAccountSession(accountPairing.accountId, accountPairing.campaignId);
+    if (!session) return jsonError("That Foundry account does not currently own any characters.", 409);
+    await db.update(accountPairingCodes).set({ consumedAt: Date.now() }).where(eq(accountPairingCodes.id, accountPairing.pairingId));
+    return Response.json({
+      ok: true,
+      account: {
+        id: accountPairing.accountId,
+        playerLabel: accountPairing.playerLabel,
+        campaignName: accountPairing.campaignName,
+      },
+    }, { headers: { "set-cookie": session.cookie } });
+  }
+
   const [pairing] = await db
     .select()
     .from(pairingCodes)

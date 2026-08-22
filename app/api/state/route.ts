@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { snapshots } from "@/db/schema";
+import { playerAccountCharacters, playerAccounts, snapshots } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
 import { jsonError, requirePlayerSession } from "@/lib/server-auth";
 
@@ -10,6 +10,49 @@ export async function GET(request: Request) {
   if (!isBridgeOnline(session.lastSeenAt)) return jsonError("The Foundry module is offline.", 503);
 
   const db = getDb();
+  if (session.accountId) {
+    const [account] = await db
+      .select({ id: playerAccounts.id, playerLabel: playerAccounts.playerLabel })
+      .from(playerAccounts)
+      .where(and(eq(playerAccounts.id, session.accountId), eq(playerAccounts.active, true)))
+      .limit(1);
+    if (!account) return jsonError("That player account is no longer active in this campaign.", 401);
+
+    const links = await db
+      .select({ actorUuid: playerAccountCharacters.actorUuid })
+      .from(playerAccountCharacters)
+      .where(eq(playerAccountCharacters.accountId, account.id));
+    if (links.length === 0) return jsonError("Your Foundry account does not currently own any characters.", 404);
+
+    const actorUuids = links.map((link) => link.actorUuid);
+    const rows = await db
+      .select({ actorUuid: snapshots.actorUuid, payloadJson: snapshots.payloadJson, revision: snapshots.revision, updatedAt: snapshots.updatedAt })
+      .from(snapshots)
+      .where(and(eq(snapshots.campaignId, session.campaignId), inArray(snapshots.actorUuid, actorUuids)));
+    if (rows.length === 0) return jsonError("Your account is connected, but Foundry has not sent its character updates yet.", 404);
+
+    const requestedActor = new URL(request.url).searchParams.get("actorUuid");
+    const selected = rows.find((row) => row.actorUuid === requestedActor) || rows[0];
+    const parsed = rows.map((row) => ({ row, snapshot: JSON.parse(row.payloadJson) }));
+    for (const item of parsed) item.snapshot.campaign.edition = session.edition;
+    const selectedSnapshot = parsed.find((item) => item.row.actorUuid === selected.actorUuid)?.snapshot;
+
+    return Response.json({
+      snapshot: selectedSnapshot,
+      revision: selected.revision,
+      updatedAt: selected.updatedAt,
+      account: { id: account.id, playerLabel: account.playerLabel },
+      characters: parsed.map(({ snapshot }) => ({
+        uuid: snapshot.actor.uuid,
+        name: snapshot.actor.name,
+        portrait: snapshot.actor.portrait,
+        ancestry: snapshot.actor.ancestry,
+        classLabel: snapshot.actor.classLabel,
+        level: snapshot.actor.level,
+      })),
+    });
+  }
+
   const [snapshot] = await db
     .select({ payloadJson: snapshots.payloadJson, revision: snapshots.revision, updatedAt: snapshots.updatedAt })
     .from(snapshots)

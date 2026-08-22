@@ -1,4 +1,4 @@
-/* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry */
+/* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
@@ -27,6 +27,7 @@ Hooks.once("ready", () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   moduleRecord.api = {
     createPairing,
+    createAccountPairing,
     pushNow: pushAllSnapshots,
     shareJournal: async (uuid, shared = true) => {
       const journal = await fromUuid(uuid);
@@ -53,6 +54,8 @@ Hooks.on("updateItem", () => scheduleSnapshot());
 Hooks.on("createChatMessage", () => scheduleSnapshot());
 Hooks.on("updateJournalEntry", () => scheduleSnapshot());
 Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
+Hooks.on("updateUser", () => scheduleSnapshot());
+Hooks.on("renderSettingsConfig", (_application, html) => addPairingControl(html));
 
 function isActiveBridgeHost() {
   if (!game.user?.isGM || !game.settings.get(MODULE_ID, "enabled")) return false;
@@ -69,7 +72,7 @@ function config() {
     relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || ""),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || ""),
-    pollMs: Math.max(1000, Number(game.settings.get(MODULE_ID, "pollMs")) || 2000),
+    pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
   };
 }
 
@@ -151,7 +154,7 @@ async function pushAllSnapshots() {
   if (!shouldRun() || !bridgeOnline || pushAllSnapshots.pending) return;
   pushAllSnapshots.pending = true;
   try {
-    const actors = game.actors.filter((actor) => actor.type === "character" && hasPlayerOwner(actor));
+    const actors = game.actors.filter((actor) => actor.type === "character");
     for (const actor of actors) {
       try {
         await bridgeFetch("/api/bridge/snapshot", { method: "POST", body: JSON.stringify(await buildSnapshot(actor)) });
@@ -164,8 +167,23 @@ async function pushAllSnapshots() {
   }
 }
 
-function hasPlayerOwner(actor) {
-  return game.users.some((user) => !user.isGM && Number(actor.ownership?.[user.id] || 0) >= 3);
+function actorOwners(actor) {
+  return game.users
+    .filter((user) => !user.isGM && Number(actor.ownership?.[user.id] || 0) >= 3)
+    .map((user) => ({ userId: user.id, name: user.name }));
+}
+
+function playerRoster() {
+  return game.users
+    .filter((user) => !user.isGM)
+    .map((user) => ({
+      userId: user.id,
+      name: user.name,
+      actorUuids: game.actors
+        .filter((actor) => actor.type === "character" && Number(actor.ownership?.[user.id] || 0) >= 3)
+        .map((actor) => actor.uuid),
+    }))
+    .filter((user) => user.actorUuids.length > 0);
 }
 
 function plainText(html = "") {
@@ -209,6 +227,7 @@ async function buildSnapshot(actor) {
       abilities,
       resources: Object.entries(system.resources || {}).filter(([, value]) => value?.label).map(([key, value]) => ({ key, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0) })),
       actions: actor.items.filter((item) => ["weapon", "spell", "feat", "consumable"].includes(item.type)).slice(0, 60).map((item) => ({ uuid: item.uuid, name: item.name, type: item.type, uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined })),
+      owners: actorOwners(actor),
       biography: plainText(system.details?.biography?.value || system.details?.biography || ""),
     },
     journals: await Promise.all(journals.map(async (journal) => {
@@ -303,4 +322,153 @@ async function createPairing(actorUuid, playerLabel = "Player") {
   const result = await bridgeFetch("/api/bridge/pairing-codes", { method: "POST", body: JSON.stringify({ actorUuid, playerLabel }) });
   ui.notifications.info(`Pocket Chronicle code for ${playerLabel}: ${result.code} (expires in 10 minutes)`);
   return result.code;
+}
+
+function addPairingControl(html) {
+  if (!game.user?.isGM) return;
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector("[data-pocket-chronicle-pair]")) return;
+  const enabled = root.querySelector(`[name="${MODULE_ID}.enabled"]`);
+  const anchor = enabled?.closest(".form-group");
+  if (!anchor) return;
+
+  const group = document.createElement("div");
+  group.className = "form-group pocket-chronicle-pairing-control";
+  group.dataset.pocketChroniclePair = "true";
+  const label = document.createElement("label");
+  label.textContent = "Player phone access";
+  const fields = document.createElement("div");
+  fields.className = "form-fields";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Pair a Phone';
+  button.addEventListener("click", () => void openPlayerAccessDialog());
+  fields.append(button);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = "Choose an existing Foundry player account and create its ten-minute phone code.";
+  group.append(label, fields, hint);
+  anchor.insertAdjacentElement("afterend", group);
+}
+
+async function choosePlayer(players) {
+  const content = document.createElement("div");
+  content.className = "pocket-chronicle-player-picker";
+  const intro = document.createElement("p");
+  intro.textContent = "Choose the Foundry account that will use this phone. Every character owned by that account will be included.";
+  const select = document.createElement("select");
+  select.name = "playerId";
+  select.style.width = "100%";
+  for (const player of players) {
+    const option = document.createElement("option");
+    option.value = player.userId;
+    option.textContent = `${player.name} — ${player.actorUuids.length} character${player.actorUuids.length === 1 ? "" : "s"}`;
+    select.append(option);
+  }
+  content.append(intro, select);
+
+  const DialogV2 = foundry.applications?.api?.DialogV2;
+  if (DialogV2) {
+    return DialogV2.wait({
+      window: { title: "Pair a Pocket Chronicle Phone" },
+      content,
+      modal: true,
+      rejectClose: false,
+      buttons: [
+        { action: "cancel", label: "Cancel" },
+        { action: "pair", label: "Create Phone Code", icon: "fa-solid fa-link", default: true, callback: () => select.value },
+      ],
+    });
+  }
+
+  return new Promise((resolve) => {
+    new Dialog({
+      title: "Pair a Pocket Chronicle Phone",
+      content: content.outerHTML,
+      buttons: {
+        cancel: { label: "Cancel", callback: () => resolve(null) },
+        pair: { label: "Create Phone Code", callback: (dialogHtml) => resolve(dialogHtml.find('[name="playerId"]').val()) },
+      },
+      default: "pair",
+      close: () => resolve(null),
+    }).render(true);
+  });
+}
+
+async function showPairingCode(result) {
+  const content = document.createElement("div");
+  content.className = "pocket-chronicle-code-card";
+  const label = document.createElement("p");
+  label.textContent = `Give this code to ${result.playerLabel}. It connects their Foundry account and ${result.characterCount} character${result.characterCount === 1 ? "" : "s"}.`;
+  const code = document.createElement("strong");
+  code.textContent = result.code;
+  const expiry = document.createElement("p");
+  expiry.textContent = "The code expires in ten minutes. Their Pocket Chronicle password is separate from their Foundry password.";
+  content.append(label, code, expiry);
+
+  const copyCode = async () => {
+    await navigator.clipboard?.writeText(result.code);
+    ui.notifications.info("Pocket Chronicle code copied.");
+  };
+  const DialogV2 = foundry.applications?.api?.DialogV2;
+  if (DialogV2) {
+    await DialogV2.wait({
+      window: { title: "Phone Code Ready" },
+      content,
+      rejectClose: false,
+      buttons: [
+        { action: "done", label: "Done" },
+        { action: "copy", label: "Copy Code", icon: "fa-solid fa-copy", default: true, callback: copyCode },
+      ],
+    });
+    return;
+  }
+  new Dialog({
+    title: "Phone Code Ready",
+    content: content.outerHTML,
+    buttons: {
+      done: { label: "Done" },
+      copy: { label: "Copy Code", callback: copyCode },
+    },
+    default: "copy",
+  }).render(true);
+}
+
+async function openPlayerAccessDialog() {
+  if (!shouldRun()) {
+    ui.notifications.warn("Enable and configure Pocket Chronicle, save the settings, then reload Foundry before pairing a phone.");
+    return;
+  }
+  if (!bridgeOnline && !(await sendHeartbeat())) {
+    ui.notifications.error("Pocket Chronicle could not reach the phone app. Check the app address and bridge key.");
+    return;
+  }
+  await pushAllSnapshots();
+  const players = playerRoster();
+  if (players.length === 0) {
+    ui.notifications.warn("No non-GM Foundry user currently owns a character. Assign Owner permission first.");
+    return;
+  }
+  const userId = await choosePlayer(players);
+  if (!userId) return;
+  const player = players.find((entry) => entry.userId === userId);
+  if (!player) return;
+  try {
+    const result = await bridgeFetch("/api/bridge/account-pairing-codes", {
+      method: "POST",
+      body: JSON.stringify({ foundryUserId: player.userId, playerLabel: player.name, actorUuids: player.actorUuids }),
+    });
+    await showPairingCode(result);
+  } catch (error) {
+    ui.notifications.error(error.message || "Pocket Chronicle could not create that phone code.");
+  }
+}
+
+async function createAccountPairing(foundryUserId) {
+  const player = playerRoster().find((entry) => entry.userId === foundryUserId);
+  if (!player) throw new Error("Choose a Foundry player who owns at least one character.");
+  return bridgeFetch("/api/bridge/account-pairing-codes", {
+    method: "POST",
+    body: JSON.stringify({ foundryUserId: player.userId, playerLabel: player.name, actorUuids: player.actorUuids }),
+  });
 }

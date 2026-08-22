@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { demoSnapshot } from "@/lib/demo-data";
-import type { ChronicleActionKind, ChronicleJournal, ChronicleSnapshot } from "@/lib/protocol";
+import type { ChronicleActionKind, ChronicleCharacterChoice, ChronicleJournal, ChronicleSnapshot } from "@/lib/protocol";
 
 type Tab = "home" | "character" | "journal" | "chat" | "shop";
-type ConnectionMode = "checking" | "offline" | "pairing" | "waiting" | "live";
+type ConnectionMode = "checking" | "offline" | "pairing" | "signin" | "waiting" | "live";
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
+type AccountLink = { id: string; playerLabel: string; campaignName: string };
+type PairingChallenge = { playerLabel: string; campaignName: string; needsPasswordSetup: boolean };
+
+const ACCOUNT_STORAGE = "pocket-chronicle-account";
+const CHARACTER_STORAGE = "pocket-chronicle-character";
 
 const tabs: Array<{ id: Tab; label: string; mark: string }> = [
   { id: "home", label: "Home", mark: "⌂" },
@@ -32,17 +37,44 @@ export default function Home() {
   const [pairingOpen, setPairingOpen] = useState(false);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingError, setPairingError] = useState("");
+  const [pairingChallenge, setPairingChallenge] = useState<PairingChallenge | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [accountLink, setAccountLink] = useState<AccountLink | null>(null);
+  const [characters, setCharacters] = useState<ChronicleCharacterChoice[]>([]);
+  const [selectedActorUuid, setSelectedActorUuid] = useState("");
   const [selectedJournal, setSelectedJournal] = useState<ChronicleJournal | null>(null);
   const [chatText, setChatText] = useState("");
   const [notice, setNotice] = useState("");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const actor = snapshot.actor;
 
-  const refreshConnection = useCallback(async () => {
-    const stateResponse = await fetch("/api/state", { cache: "no-store" }).catch(() => null);
+  const refreshConnection = useCallback(async (preferredActorUuid?: string) => {
+    const storedActor = preferredActorUuid || window.localStorage.getItem(CHARACTER_STORAGE) || "";
+    const stateUrl = storedActor ? `/api/state?actorUuid=${encodeURIComponent(storedActor)}` : "/api/state";
+    const stateResponse = await fetch(stateUrl, { cache: "no-store" }).catch(() => null);
     if (stateResponse?.ok) {
-      const data = await stateResponse.json() as { snapshot: ChronicleSnapshot };
+      const data = await stateResponse.json() as {
+        snapshot: ChronicleSnapshot;
+        characters?: ChronicleCharacterChoice[];
+        account?: { id: string; playerLabel: string };
+      };
       setSnapshot(data.snapshot);
+      setCharacters(data.characters || [{
+        uuid: data.snapshot.actor.uuid,
+        name: data.snapshot.actor.name,
+        portrait: data.snapshot.actor.portrait,
+        ancestry: data.snapshot.actor.ancestry,
+        classLabel: data.snapshot.actor.classLabel,
+        level: data.snapshot.actor.level,
+      }]);
+      setSelectedActorUuid(data.snapshot.actor.uuid);
+      window.localStorage.setItem(CHARACTER_STORAGE, data.snapshot.actor.uuid);
+      if (data.account) {
+        const linked = { id: data.account.id, playerLabel: data.account.playerLabel, campaignName: data.snapshot.campaign.name };
+        setAccountLink(linked);
+        window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(linked));
+      }
       setMode("live");
       return;
     }
@@ -53,6 +85,17 @@ export default function Home() {
     if (stateResponse?.status === 503) {
       setMode("offline");
       return;
+    }
+
+    const savedAccount = window.localStorage.getItem(ACCOUNT_STORAGE);
+    if (stateResponse?.status === 401 && savedAccount) {
+      try {
+        setAccountLink(JSON.parse(savedAccount) as AccountLink);
+        setMode("signin");
+        return;
+      } catch {
+        window.localStorage.removeItem(ACCOUNT_STORAGE);
+      }
     }
 
     const statusResponse = await fetch("/api/status", { cache: "no-store" }).catch(() => null);
@@ -85,7 +128,7 @@ export default function Home() {
     const response = await fetch("/api/actions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind, payload }),
+      body: JSON.stringify({ actorUuid: actor.uuid, kind, payload }),
     });
     if (!response.ok) {
       if (response.status === 503) setMode("offline");
@@ -101,21 +144,80 @@ export default function Home() {
     event.preventDefault();
     setPairingError("");
     const normalized = pairingCode.replace(/[^a-z0-9]/gi, "").toUpperCase();
+    if (pairingChallenge?.needsPasswordSetup && password !== passwordConfirm) {
+      setPairingError("Those passwords do not match.");
+      return;
+    }
     const response = await fetch("/api/pair", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: normalized }),
+      body: JSON.stringify({ code: normalized, password: pairingChallenge ? password : undefined }),
     });
-    const data = await response.json().catch(() => ({})) as { error?: string };
+    const data = await response.json().catch(() => ({})) as {
+      error?: string;
+      challenge?: boolean;
+      playerLabel?: string;
+      campaignName?: string;
+      needsPasswordSetup?: boolean;
+      account?: AccountLink;
+    };
     if (!response.ok) {
       setPairingError(data.error || "That pairing code did not work.");
       return;
     }
+    if (data.challenge && data.playerLabel && data.campaignName) {
+      setPairingChallenge({
+        playerLabel: data.playerLabel,
+        campaignName: data.campaignName,
+        needsPasswordSetup: Boolean(data.needsPasswordSetup),
+      });
+      setPassword("");
+      setPasswordConfirm("");
+      return;
+    }
+    if (data.account) {
+      setAccountLink(data.account);
+      window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(data.account));
+    }
     setMode("checking");
     setPairingOpen(false);
     setSettingsOpen(false);
-    setNotice("Phone paired with Foundry.");
+    setPairingChallenge(null);
+    setPairingCode("");
+    setPassword("");
+    setPasswordConfirm("");
+    setNotice("Your Foundry account is connected.");
     await refreshConnection();
+  }
+
+  async function signIn(event: React.FormEvent) {
+    event.preventDefault();
+    if (!accountLink) return;
+    setPairingError("");
+    const response = await fetch("/api/sign-in", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: accountLink.id, password }),
+    });
+    const data = await response.json().catch(() => ({})) as { error?: string; account?: AccountLink };
+    if (!response.ok) {
+      setPairingError(data.error || "That sign-in did not work.");
+      return;
+    }
+    if (data.account) {
+      setAccountLink(data.account);
+      window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(data.account));
+    }
+    setPassword("");
+    setMode("checking");
+    await refreshConnection();
+  }
+
+  async function chooseCharacter(actorUuid: string) {
+    setSelectedActorUuid(actorUuid);
+    window.localStorage.setItem(CHARACTER_STORAGE, actorUuid);
+    setSelectedJournal(null);
+    await refreshConnection(actorUuid);
   }
 
   async function adjustHp(amount: number) {
@@ -134,12 +236,43 @@ export default function Home() {
   }
 
   async function installApp() {
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setNotice("Pocket Chronicle is already installed on this phone.");
+      return;
+    }
     if (installPrompt) {
       await installPrompt.prompt();
       setInstallPrompt(null);
       return;
     }
-    setNotice("On iPhone, choose Share, then Add to Home Screen.");
+    const isApplePhone = /iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+    setNotice(isApplePhone
+      ? "On iPhone: tap Safari’s Share button, then Add to Home Screen."
+      : "Open the browser menu and choose Install app or Add to Home screen.");
+  }
+
+  function beginAnotherPairing() {
+    setPairingChallenge(null);
+    setPairingCode("");
+    setPassword("");
+    setPasswordConfirm("");
+    setPairingError("");
+    setPairingOpen(true);
+  }
+
+  function pairingFields() {
+    if (pairingChallenge) return <>
+      <div className="account-preview">
+        <span className="portrait-placeholder compact">{initials(pairingChallenge.playerLabel)}</span>
+        <span><small className="eyebrow">FOUNDRY ACCOUNT</small><strong>{pairingChallenge.playerLabel}</strong><small>{pairingChallenge.campaignName}</small></span>
+      </div>
+      <p className="credential-help">{pairingChallenge.needsPasswordSetup
+        ? "Create a private Pocket Chronicle password. Do not reuse or enter your Foundry password."
+        : "Enter the Pocket Chronicle password already connected to this Foundry account."}</p>
+      <input className="password-input" type="password" autoComplete={pairingChallenge.needsPasswordSetup ? "new-password" : "current-password"} minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Pocket Chronicle password" aria-label="Pocket Chronicle password" required />
+      {pairingChallenge.needsPasswordSetup && <input className="password-input confirm-input" type="password" autoComplete="new-password" minLength={8} maxLength={128} value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="Confirm password" aria-label="Confirm Pocket Chronicle password" required />}
+    </>;
+    return <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" required />;
   }
 
   function HomeView() {
@@ -151,6 +284,15 @@ export default function Home() {
         <h2>Your story,<br />carried lightly.</h2>
         <p>Everything you need at the table. None of the map.</p>
       </section>
+
+      {characters.length > 1 && <section className="character-switcher" aria-label="Your characters">
+        <p className="eyebrow">YOUR CHARACTERS</p>
+        <div>
+          {characters.map((character) => <button className={character.uuid === selectedActorUuid ? "active" : ""} type="button" key={character.uuid} onClick={() => chooseCharacter(character.uuid)}>
+            <span>{initials(character.name)}</span><small>{character.name}</small>
+          </button>)}
+        </div>
+      </section>}
 
       <button className="character-card card-button" type="button" onClick={() => setActiveTab("character")}>
         <div className="portrait-placeholder">{initials(actor.name)}</div>
@@ -266,13 +408,19 @@ export default function Home() {
       ? "Foundry is offline"
       : mode === "pairing"
         ? "Pair this phone"
+        : mode === "signin"
+          ? `Welcome back, ${accountLink?.playerLabel || "adventurer"}`
         : mode === "waiting"
           ? "Waiting for your character"
           : "Checking your table…";
     const gateCopy = mode === "offline"
       ? "Ask the GM to open the Foundry world and enable the Pocket Chronicle module. This app remains locked while the bridge is offline."
       : mode === "pairing"
-        ? "The Foundry module is online. Enter the temporary six-character code from your GM to unlock your campaign."
+        ? pairingChallenge
+          ? "Confirm the Foundry account selected by your GM, then finish your private Pocket Chronicle sign-in."
+          : "Enter the temporary six-character account code from your GM."
+        : mode === "signin"
+          ? `Sign in to ${accountLink?.campaignName || "your campaign"}. Your Foundry password is never requested.`
         : mode === "waiting"
           ? "This phone is paired, but Foundry has not sent the first character update yet. Keep the world open for a moment."
           : "Looking for an active Pocket Chronicle module.";
@@ -293,13 +441,22 @@ export default function Home() {
             <p>{gateCopy}</p>
             {mode === "pairing" ? (
               <form className="connection-form" onSubmit={pairPhone}>
-                <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" />
+                {pairingFields()}
                 {pairingError && <p className="form-error">{pairingError}</p>}
-                <button className="primary-button full-button" type="submit">Connect campaign</button>
+                <button className="primary-button full-button" type="submit">{pairingChallenge ? (pairingChallenge.needsPasswordSetup ? "Create account & connect" : "Sign in & connect") : "Continue"}</button>
+              </form>
+            ) : mode === "signin" ? (
+              <form className="connection-form" onSubmit={signIn}>
+                <input className="password-input" type="password" autoComplete="current-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Pocket Chronicle password" aria-label="Pocket Chronicle password" required />
+                {pairingError && <p className="form-error">{pairingError}</p>}
+                <button className="primary-button full-button" type="submit">Sign in</button>
+                <button className="demo-link" type="button" onClick={() => { setMode("pairing"); beginAnotherPairing(); setPairingOpen(false); }}>Use a new DM code</button>
               </form>
             ) : (
               <button className="secondary-button gate-button" type="button" onClick={() => { setMode("checking"); refreshConnection(); }}>Check again</button>
             )}
+            <button className="install-gate-button" type="button" onClick={installApp}>⌂ Install on this phone</button>
+            {notice && <p className="install-guidance">{notice}</p>}
           </section>
           <footer className="connection-footer">No Foundry password or Scene canvas is sent to this phone.</footer>
         </section>
@@ -345,9 +502,9 @@ export default function Home() {
           <section className="bottom-sheet">
             <div className="sheet-handle" />
             <p className="eyebrow">POCKET CHRONICLE</p><h2>Phone settings</h2>
-            <div className="setting-row"><span><strong>Campaign</strong><small>{snapshot.campaign.name}</small></span><span className="edition-badge">Live</span></div>
+            <div className="setting-row"><span><strong>{accountLink?.playerLabel || "Player account"}</strong><small>{snapshot.campaign.name} · {characters.length} character{characters.length === 1 ? "" : "s"}</small></span><span className="edition-badge">Live</span></div>
             <button className="sheet-action" type="button" onClick={installApp}><span>⌂</span><span><strong>Install on this phone</strong><small>Use it like an app from your home screen.</small></span></button>
-            <button className="sheet-action" type="button" onClick={() => setPairingOpen(true)}><span>◇</span><span><strong>Pair another campaign</strong><small>Enter the temporary code from your GM.</small></span></button>
+            <button className="sheet-action" type="button" onClick={beginAnotherPairing}><span>◇</span><span><strong>Pair another account</strong><small>Enter a temporary account code from your GM.</small></span></button>
             <button className="secondary-button full-button" type="button" onClick={() => setSettingsOpen(false)}>Done</button>
           </section>
         </div>}
@@ -356,11 +513,11 @@ export default function Home() {
           <button className="modal-scrim" type="button" aria-label="Close pairing" onClick={() => setPairingOpen(false)} />
           <form className="pair-card" onSubmit={pairPhone}>
             <button className="close-button" type="button" aria-label="Close" onClick={() => setPairingOpen(false)}>×</button>
-            <p className="eyebrow">CONNECT SAFELY</p><h2 id="pair-title">Pair this phone</h2>
-            <p>Ask your GM for a six-character code. It expires after ten minutes and never reveals a Foundry password.</p>
-            <input autoCapitalize="characters" autoComplete="one-time-code" maxLength={7} value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABC 123" aria-label="Pairing code" />
+            <p className="eyebrow">CONNECT SAFELY</p><h2 id="pair-title">{pairingChallenge ? "Confirm your account" : "Pair this phone"}</h2>
+            <p>{pairingChallenge ? "This password belongs only to Pocket Chronicle." : "Ask your GM for your Foundry account’s six-character code. It expires after ten minutes."}</p>
+            {pairingFields()}
             {pairingError && <p className="form-error">{pairingError}</p>}
-            <button className="primary-button full-button" type="submit">Connect campaign</button>
+            <button className="primary-button full-button" type="submit">{pairingChallenge ? (pairingChallenge.needsPasswordSetup ? "Create account & connect" : "Sign in & connect") : "Continue"}</button>
           </form>
         </div>}
       </section>

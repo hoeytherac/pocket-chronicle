@@ -36,10 +36,49 @@ export const pairingCodes = sqliteTable("pairing_codes", {
   index("pairing_codes_expiry_idx").on(table.expiresAt),
 ]);
 
+export const playerAccounts = sqliteTable("player_accounts", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  foundryUserId: text("foundry_user_id").notNull(),
+  playerLabel: text("player_label").notNull(),
+  credentialHash: text("credential_hash"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("player_accounts_campaign_user_unique").on(table.campaignId, table.foundryUserId),
+  index("player_accounts_campaign_idx").on(table.campaignId),
+]);
+
+export const playerAccountCharacters = sqliteTable("player_account_characters", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull().references(() => playerAccounts.id, { onDelete: "cascade" }),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  actorUuid: text("actor_uuid").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("player_account_characters_unique").on(table.accountId, table.actorUuid),
+  index("player_account_characters_actor_idx").on(table.campaignId, table.actorUuid),
+]);
+
+export const accountPairingCodes = sqliteTable("account_pairing_codes", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull().references(() => playerAccounts.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  consumedAt: integer("consumed_at"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  uniqueIndex("account_pairing_codes_hash_unique").on(table.codeHash),
+  index("account_pairing_codes_expiry_idx").on(table.expiresAt),
+]);
+
 export const playerSessions = sqliteTable("player_sessions", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   actorUuid: text("actor_uuid").notNull(),
+  accountId: text("account_id").references(() => playerAccounts.id, { onDelete: "set null" }),
   tokenHash: text("token_hash").notNull(),
   expiresAt: integer("expires_at").notNull(),
   createdAt: integer("created_at").notNull(),

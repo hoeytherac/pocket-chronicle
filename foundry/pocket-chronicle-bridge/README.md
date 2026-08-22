@@ -10,6 +10,8 @@ https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocke
 
 Then set the app address, campaign ID, bridge key, and **Enable Pocket Chronicle bridge** under Foundry's Module Settings. Only the first active GM connects. The module sends an authenticated heartbeat; if it stops, the phone website locks automatically.
 
+After saving and reloading, return to the module settings and click **Pair a Phone**. Choose an existing Foundry player account. Pocket Chronicle creates a ten-minute account code and automatically includes every character for which that user has Owner permission. The player creates a separate Pocket Chronicle password on first connection; the bridge never reads or transmits Foundry passwords.
+
 Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
 
 Create a ten-minute pairing code from a GM macro:

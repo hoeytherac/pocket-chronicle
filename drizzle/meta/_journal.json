@@ -15,6 +15,13 @@
       "when": 1787425323388,
       "tag": "0001_bridge_presence",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787428167340,
+      "tag": "0002_thankful_white_tiger",
+      "breakpoints": true
     }
   ]
 }

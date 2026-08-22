@@ -5,9 +5,11 @@ Pocket Chronicle is designed so a lost phone does not reveal a Foundry password 
 ## Trust boundaries
 
 - Bridge keys are long random secrets stored in Foundry world settings and hashed in D1.
-- Players receive single-use six-character pairing codes that expire after ten minutes.
+- GMs select a specific existing Foundry user before issuing a single-use six-character account code that expires after ten minutes.
+- Pocket Chronicle passwords are separate from Foundry passwords and are stored only as salted PBKDF2 hashes.
 - Paired sessions use opaque, hashed tokens in Secure, HttpOnly, SameSite cookies.
-- Character and campaign IDs come from the authenticated session, never from a browser-supplied tenant field.
+- Character actions are accepted only for Actor UUIDs currently mapped to the signed-in Foundry account with Owner permission.
+- Campaign IDs come from the authenticated session, never from a browser-supplied tenant field.
 - The bridge sends a sanitized allowlist rather than serializing Actor, Journal, User, or World documents wholesale.
 - Journal entries and shop items must be explicitly shared by the GM.
 - Phone actions are validated against a fixed allowlist and revalidated inside Foundry.
