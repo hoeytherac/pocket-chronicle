@@ -43,7 +43,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v055.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v056.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -83,8 +83,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
-  assert.match(compatibilityLoader, /bridge-v055\.js/);
-  assert.match(moduleManifest, /bridge-v055\.js/);
+  assert.match(compatibilityLoader, /bridge-v056\.js/);
+  assert.match(moduleManifest, /bridge-v056\.js/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(security, /PBKDF2/);

@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { campaigns } from "@/db/schema";
 import { jsonError, requireBridge } from "@/lib/server-auth";
-import { hashPassword, verifyPassword } from "@/lib/security";
+import { hashPassword, normalizeCampaignCode, verifyPassword } from "@/lib/security";
 
 export async function POST(request: Request) {
   const bridge = await requireBridge(request);
   if (!bridge) return jsonError("Bridge authentication failed.", 401);
   const body = await request.json().catch(() => null) as { code?: string } | null;
-  const code = body?.code?.trim().toUpperCase() || "";
-  if (!/^[A-Z0-9]{6}$/.test(code)) {
+  const code = normalizeCampaignCode(body?.code || "");
+  if (!code) {
     return jsonError("Campaign code must be exactly six letters or numbers.", 400);
   }
 

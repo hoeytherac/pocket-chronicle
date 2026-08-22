@@ -6,7 +6,7 @@
   "POCKET.CampaignId.Name": "Campaign ID",
   "POCKET.CampaignId.Hint": "The campaign ID created when this campaign was provisioned.",
   "POCKET.CampaignCode.Name": "Permanent six-character Campaign code",
-  "POCKET.CampaignCode.Hint": "Choose exactly six letters or numbers. Players enter this code with the Campaign ID; it is not your Foundry or administrator password.",
+  "POCKET.CampaignCode.Hint": "Choose exactly six letters or numbers. O and 0 are treated alike; I, L, and 1 are treated alike. Players enter this code with the Campaign ID.",
   "POCKET.BridgeKey.Name": "Private bridge key",
   "POCKET.BridgeKey.Hint": "Keep this secret. Players never need this key.",
   "POCKET.PollMs.Name": "Action check interval",

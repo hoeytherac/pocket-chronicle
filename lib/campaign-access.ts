@@ -3,12 +3,12 @@ import { getDb } from "@/db";
 import { campaigns, tenants } from "@/db/schema";
 import { hasProductAccess } from "@/lib/entitlements";
 import type { Edition, SubscriptionStatus } from "@/lib/protocol";
-import { verifyPassword } from "@/lib/security";
+import { normalizeCampaignCode, verifyPassword } from "@/lib/security";
 
 export async function authenticateCampaignAccess(campaignId: string, code: string) {
   const normalizedCampaignId = campaignId.trim().slice(0, 100);
-  const normalizedCode = code.trim().toUpperCase();
-  if (!normalizedCampaignId || !/^[A-Z0-9]{6}$/.test(normalizedCode)) return null;
+  const normalizedCode = normalizeCampaignCode(code);
+  if (!normalizedCampaignId || !normalizedCode) return null;
 
   const [campaign] = await getDb()
     .select({

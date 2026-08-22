@@ -87,7 +87,7 @@ function config() {
   return {
     relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || "").trim(),
-    campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase(),
+    campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1"),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || "").trim(),
     pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
   };
@@ -112,7 +112,7 @@ function startBridge() {
   const current = config();
   void sendHeartbeat(true).then(async (connected) => {
     if (!connected) return;
-    await syncCampaignCode(false);
+    await syncCampaignCode(true);
     await pushAllSnapshots();
     await pollAccessRequests();
   });
@@ -395,7 +395,7 @@ function configureSettingsUi(html) {
     codeInput.autocomplete = "off";
     codeInput.style.textTransform = "uppercase";
     codeInput.addEventListener("input", () => {
-      codeInput.value = codeInput.value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase();
+      codeInput.value = codeInput.value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
     });
   }
   if (bridgeKeyInput) {
@@ -416,7 +416,11 @@ function configureSettingsUi(html) {
   button.type = "button";
   button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Check Phone Requests';
   button.addEventListener("click", () => void pollAccessRequests(true));
-  fields.append(button);
+  const syncButton = document.createElement("button");
+  syncButton.type = "button";
+  syncButton.innerHTML = '<i class="fa-solid fa-key"></i> Save Campaign Code';
+  syncButton.addEventListener("click", () => void syncCampaignCode(true));
+  fields.append(syncButton, button);
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent = "Players enter the Campaign ID and this permanent six-character code in the app, choose their Foundry account, then ask you to approve the phone.";

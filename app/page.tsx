@@ -32,6 +32,10 @@ function signed(value: number) {
   return value >= 0 ? `+${value}` : `${value}`;
 }
 
+function campaignCodeInput(value: string) {
+  return value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [snapshot, setSnapshot] = useState<ChronicleSnapshot>(demoSnapshot);
@@ -364,7 +368,7 @@ export default function Home() {
     </div>;
     return <>
       <input className="campaign-id-input" autoCapitalize="none" autoComplete="username" maxLength={100} value={campaignId} onChange={(event) => setCampaignId(event.target.value)} placeholder="Campaign ID" aria-label="Campaign ID" required />
-      <input className="campaign-code-input confirm-input" autoCapitalize="characters" autoComplete="off" inputMode="text" minLength={6} maxLength={6} pattern="[A-Za-z0-9]{6}" value={campaignCode} onChange={(event) => setCampaignCode(event.target.value.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase())} placeholder="ABC123" aria-label="Permanent six-character Campaign code" required />
+      <input className="campaign-code-input confirm-input" autoCapitalize="characters" autoComplete="off" inputMode="text" minLength={6} maxLength={6} pattern="[A-Za-z0-9]{6}" value={campaignCode} onChange={(event) => setCampaignCode(campaignCodeInput(event.target.value))} placeholder="ABC123" aria-label="Permanent six-character Campaign code" required />
     </>;
   }
 

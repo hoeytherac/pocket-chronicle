@@ -19,6 +19,12 @@ export function randomPairingCode() {
   return Array.from(value, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
+export function normalizeCampaignCode(value: string) {
+  const code = value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) return "";
+  return code.replace(/O/g, "0").replace(/[IL]/g, "1");
+}
+
 function hexBytes(value: string) {
   const pairs = value.match(/.{2}/g) || [];
   return new Uint8Array(pairs.map((pair) => Number.parseInt(pair, 16)));
