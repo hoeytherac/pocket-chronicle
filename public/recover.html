@@ -133,8 +133,7 @@
           repairButton.hidden = true;
           openLink.hidden = false;
           statusText.textContent = "Pocket Chronicle is repaired on this phone.";
-          detailText.textContent = "Opening the repaired app now…";
-          window.setTimeout(() => window.location.replace(openLink.href), 350);
+          detailText.textContent = "Tap Open Pocket Chronicle. The repair page will not redirect on its own.";
         } catch (error) {
           repairButton.disabled = false;
           repairButton.textContent = "Try again";

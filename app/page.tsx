@@ -281,7 +281,11 @@ export default function Home() {
         return;
       }
       window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(data.account));
-      window.location.replace(`/?connected=${Date.now()}`);
+      setAccountLink(data.account);
+      setPassword("");
+      setPasswordConfirm("");
+      setPairingOpen(false);
+      await refreshConnection();
     }
   }
 
@@ -297,7 +301,10 @@ export default function Home() {
       return;
     }
     window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(data.account));
-    window.location.replace(`/?signedIn=${Date.now()}`);
+    setAccountLink(data.account);
+    setPassword("");
+    setPairingOpen(false);
+    await refreshConnection();
   }
 
   async function signIn(event: React.FormEvent) {

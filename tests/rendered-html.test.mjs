@@ -68,9 +68,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/\?pwa=11"/);
+  assert.match(manifest, /"start_url": "\/\?pwa=12"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
+  assert.doesNotMatch(page, /window\.location\.replace/);
   assert.match(schema, /export const tenants/);
   assert.match(schema, /export const playerSessions/);
   assert.match(schema, /export const playerAccounts/);
