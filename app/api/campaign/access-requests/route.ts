@@ -32,7 +32,8 @@ export async function POST(request: Request) {
     ))
     .limit(1);
   if (!account) return jsonError("That Foundry player account is unavailable.", 404);
-  if (account.credentialHash) return jsonError("That account already has a password and does not need GM approval.", 409);
+
+  const requestKind = account.credentialHash ? "password-reset" : "first-time";
 
   const requestToken = randomToken();
   const now = Date.now();
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
   return Response.json({
     requestId,
     requestToken,
+    requestKind,
     playerLabel: account.playerLabel,
     campaignName: campaign.name,
     expiresInSeconds: REQUEST_LIFETIME_MS / 1000,

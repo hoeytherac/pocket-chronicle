@@ -13,6 +13,7 @@ export async function GET(request: Request) {
       id: phoneAccessRequests.id,
       accountId: phoneAccessRequests.accountId,
       playerLabel: playerAccounts.playerLabel,
+      credentialHash: playerAccounts.credentialHash,
       actorUuid: playerAccountCharacters.actorUuid,
       createdAt: phoneAccessRequests.createdAt,
       expiresAt: phoneAccessRequests.expiresAt,
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
     const current = entries.get(row.id) || {
       id: row.id,
       playerLabel: row.playerLabel,
+      kind: row.credentialHash ? "password-reset" as const : "first-time" as const,
       characterCount: 0,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
     current.characterCount += 1;
     entries.set(row.id, current);
     return entries;
-  }, new Map<string, { id: string; playerLabel: string; characterCount: number; createdAt: number; expiresAt: number }>()).values());
+  }, new Map<string, { id: string; playerLabel: string; kind: "first-time" | "password-reset"; characterCount: number; createdAt: number; expiresAt: number }>()).values());
 
   return Response.json({ requests });
 }

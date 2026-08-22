@@ -65,6 +65,8 @@ The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Fou
 6. The player opens the app, enters the Campaign ID and Campaign code, and selects their existing Foundry user.
 7. Foundry shows the active GM an approval prompt. After approval, the player creates a separate Pocket Chronicle password for future sign-ins. The account automatically receives every character it owns in Foundry. Foundry passwords are never requested, copied, or stored.
 
+For a forgotten password, the player taps **Forgot or reset this password** and re-enters the Campaign ID and Campaign code. The GM clicks **Check Requests / Resets** in the Pocket Chronicle Bridge settings and approves the named player. The phone then prompts for a new password, and older Pocket Chronicle sessions for that player are signed out.
+
 The bridge and every approval prompt use Foundry documents directly. They do not render or depend on the Scene canvas, so the canvas may remain disabled.
 
 To share content, use the bridge API from a GM macro:

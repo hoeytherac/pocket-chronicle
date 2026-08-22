@@ -242,15 +242,35 @@
     form.appendChild(labelledInput("Account password", "account-password", "password", "", "Your password"));
     appendError(form, error);
     form.appendChild(submitButton("Sign in"));
+    form.appendChild(textButton("Forgot or reset this password", "reset-password"));
     form.appendChild(textButton("Use a different campaign", "restart-pairing"));
+    elements.gateContent.replaceChildren(form);
+  }
+
+  function showPasswordResetConnect(error) {
+    var name = state.account && state.account.playerLabel ? state.account.playerLabel : "this account";
+    showGate("Reset " + name + "’s password", "Re-enter the Campaign ID and six-character Campaign code. A reset request will be sent to your GM in Foundry.");
+    var form = create("form", "field-stack");
+    form.dataset.form = "password-reset-campaign";
+    form.appendChild(labelledInput("Campaign ID", "reset-campaign-id", "text", state.campaignId, "salt-and-sacrifice"));
+    var codeField = labelledInput("Campaign code", "reset-campaign-code", "text", state.campaignCode, "ABC123");
+    codeField.querySelector("input").className = "campaign-code";
+    codeField.querySelector("input").maxLength = 6;
+    codeField.querySelector("input").setAttribute("autocapitalize", "characters");
+    codeField.querySelector("input").setAttribute("autocomplete", "off");
+    form.appendChild(codeField);
+    appendError(form, error);
+    form.appendChild(submitButton("Ask GM to reset password"));
+    form.appendChild(textButton("Back to sign in", "back-to-signin"));
     elements.gateContent.replaceChildren(form);
   }
 
   function showApprovalWaiting() {
     var label = state.accessRequest ? state.accessRequest.playerLabel : "this account";
-    showGate("Waiting for your GM", "The request for " + label + " is in Foundry. Keep this screen open while the GM approves it.");
+    var isReset = state.accessRequest && state.accessRequest.kind === "password-reset";
+    showGate("Waiting for your GM", "The " + (isReset ? "password reset" : "phone setup") + " request for " + label + " is in Foundry. Keep this screen open while the GM approves it.");
     var panel = create("div", "sheet-panel");
-    panel.appendChild(create("strong", "", "Approval request sent"));
+    panel.appendChild(create("strong", "", isReset ? "Password reset requested" : "Approval request sent"));
     panel.appendChild(create("small", "", "This request stays active for ten minutes."));
     elements.gateContent.replaceChildren(panel, textButton("Cancel and start again", "restart-pairing"));
     startApprovalPoll();
@@ -258,7 +278,8 @@
 
   function showCreatePassword(error) {
     stopApprovalPoll();
-    showGate("Create your password", "Your GM approved this first setup. Create a password for this Foundry account on Pocket Chronicle.");
+    var isReset = state.accessRequest && state.accessRequest.kind === "password-reset";
+    showGate("Create your new password", "Your GM approved " + (isReset ? "the password reset" : "this first setup") + ". Create a new password for this Foundry account on Pocket Chronicle.");
     var form = create("form", "field-stack");
     form.dataset.form = "create-password";
     form.appendChild(labelledInput("New password", "new-password", "password", "", "At least 6 characters"));
@@ -308,6 +329,7 @@
     if (kind === "campaign") await connectCampaign(form);
     else if (kind === "account") await chooseAccount(form);
     else if (kind === "signin") await signIn(form);
+    else if (kind === "password-reset-campaign") await requestPasswordReset(form);
     else if (kind === "create-password") await completeApproval(form);
     if (form.isConnected) disableSubmit(form, false);
   }
@@ -316,6 +338,10 @@
     var button = event.target.closest("button[data-action]");
     if (!button) return;
     if (button.dataset.action === "restart-pairing") restartPairing();
+    else if (button.dataset.action === "reset-password") {
+      if (state.campaignId && state.campaignCode) requestPasswordReset();
+      else showPasswordResetConnect();
+    } else if (button.dataset.action === "back-to-signin") showSignIn();
   }
 
   function disableSubmit(form, disabled) {
@@ -360,7 +386,6 @@
     }
     setStoredAccount({ id: account.id, playerLabel: account.playerLabel, campaignName: state.campaignName });
     if (account.hasPassword) {
-      state.campaignCode = "";
       showSignIn();
       return;
     }
@@ -376,6 +401,7 @@
     state.accessRequest = {
       id: result.data.requestId,
       token: result.data.requestToken,
+      kind: result.data.requestKind || "first-time",
       playerLabel: result.data.playerLabel,
       campaignName: result.data.campaignName
     };
@@ -396,6 +422,39 @@
     }
     setStoredAccount(result.data.account);
     await loadState();
+  }
+
+  async function requestPasswordReset(form) {
+    if (!state.account || !state.account.id) {
+      restartPairing();
+      return;
+    }
+    if (form) {
+      state.campaignId = form.querySelector("#reset-campaign-id").value.trim();
+      state.campaignCode = normalizeCode(form.querySelector("#reset-campaign-code").value);
+    }
+    if (!state.campaignId || state.campaignCode.length !== 6) {
+      showPasswordResetConnect("Enter the complete Campaign ID and six-character Campaign code.");
+      return;
+    }
+    var result = await post("/api/campaign/access-requests", {
+      campaignId: state.campaignId,
+      campaignCode: state.campaignCode,
+      accountId: state.account.id
+    });
+    if (!result.ok || !result.data.requestId || !result.data.requestToken) {
+      showPasswordResetConnect(result.data.error || "That password reset request could not be sent.");
+      return;
+    }
+    state.accessRequest = {
+      id: result.data.requestId,
+      token: result.data.requestToken,
+      kind: "password-reset",
+      playerLabel: result.data.playerLabel,
+      campaignName: result.data.campaignName
+    };
+    state.campaignCode = "";
+    showApprovalWaiting();
   }
 
   function startApprovalPoll() {

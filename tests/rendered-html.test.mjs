@@ -38,7 +38,7 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, mobile, mobileScript, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
@@ -51,6 +51,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/bridge/access-requests/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/campaign/access-requests/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/campaign/access-requests/[id]/complete/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/security.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_thankful_white_tiger.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0003_flowery_matthew_murdock.sql", import.meta.url), "utf8"),
@@ -71,17 +74,19 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=13"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=14"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=1/);
+  assert.match(mobile, /mobile\.js\?v=2/);
   assert.match(mobile, /Foundry companion/i);
   assert.doesNotMatch(mobile, /butterfly/i);
   assert.match(mobileScript, /\/api\/campaign\/connect/);
   assert.match(mobileScript, /\/api\/sign-in/);
   assert.match(mobileScript, /requestLevelUp/);
   assert.match(mobileScript, /updateBiography/);
+  assert.match(mobileScript, /Forgot or reset this password/);
+  assert.match(mobileScript, /password-reset-campaign/);
   assert.doesNotMatch(mobileScript, /location\.(?:replace|reload)/);
   assert.match(recovery, /\/mobile\.html\?recovered=/);
   assert.match(schema, /export const tenants/);
@@ -101,12 +106,18 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /campaignCode/);
   assert.ok(bridge.indexOf('"campaignId"') < bridge.indexOf('"campaignCode"'));
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
-  assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
+  assert.match(bridge, /Check Requests \/ Resets/);
+  assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v056\.js/);
   assert.match(moduleManifest, /bridge-v056\.js/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
+  assert.match(bridgeAccessRequests, /password-reset/);
+  assert.match(campaignAccessRequests, /requestKind/);
+  assert.doesNotMatch(campaignAccessRequests, /already has a password and does not need GM approval/);
+  assert.match(completeAccessRequest, /passwordWasReset/);
+  assert.match(completeAccessRequest, /delete\(playerSessions\)/);
   assert.match(security, /PBKDF2/);
   assert.match(accountMigration, /CREATE TABLE `player_accounts`/);
   assert.match(accessMigration, /CREATE TABLE `phone_access_requests`/);

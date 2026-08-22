@@ -1,6 +1,6 @@
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/db";
-import { campaigns, phoneAccessRequests, playerAccounts, tenants } from "@/db/schema";
+import { campaigns, phoneAccessRequests, playerAccounts, playerSessions, tenants } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
 import { hasProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
@@ -46,7 +46,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return jsonError("That approved phone request is no longer available.", 403);
   }
   if (!isBridgeOnline(accessRequest.lastSeenAt)) return jsonError("That Foundry world is offline.", 503);
-  if (accessRequest.credentialHash) return jsonError("That account already has a password. Return to sign in without GM approval.", 409);
+  const passwordWasReset = Boolean(accessRequest.credentialHash);
+
+  if (passwordWasReset) {
+    await db.delete(playerSessions).where(eq(playerSessions.accountId, accessRequest.accountId));
+  }
 
   await db.update(playerAccounts).set({ credentialHash: await hashPassword(body.password), updatedAt: Date.now() })
     .where(eq(playerAccounts.id, accessRequest.accountId));
@@ -58,6 +62,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   return Response.json({
     ok: true,
+    passwordWasReset,
     account: { id: accessRequest.accountId, playerLabel: accessRequest.playerLabel, campaignName: accessRequest.campaignName },
   }, { headers: { "set-cookie": session.cookie } });
 }

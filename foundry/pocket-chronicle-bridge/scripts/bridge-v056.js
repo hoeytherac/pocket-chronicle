@@ -427,12 +427,12 @@ function configureSettingsUi(html) {
   group.className = "form-group pocket-chronicle-pairing-control";
   group.dataset.pocketChroniclePair = "true";
   const label = document.createElement("label");
-  label.textContent = "Player phone approvals";
+  label.textContent = "Player phone access";
   const fields = document.createElement("div");
   fields.className = "form-fields";
   const button = document.createElement("button");
   button.type = "button";
-  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Check Phone Requests';
+  button.innerHTML = '<i class="fa-solid fa-mobile-screen-button"></i> Check Requests / Resets';
   button.addEventListener("click", () => void pollAccessRequests(true));
   const syncButton = document.createElement("button");
   syncButton.type = "button";
@@ -441,7 +441,7 @@ function configureSettingsUi(html) {
   fields.append(syncButton, button);
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Players enter the Campaign ID and this permanent six-character code in the app, choose their Foundry account, then ask you to approve the phone.";
+  hint.textContent = "Players use this code to connect. First-time phones and forgotten passwords appear here for your approval.";
   group.append(label, fields, hint);
   anchor.insertAdjacentElement("afterend", group);
 }
@@ -450,32 +450,35 @@ async function chooseAccessDecision(accessRequest) {
   const content = document.createElement("div");
   content.className = "pocket-chronicle-player-picker";
   const intro = document.createElement("p");
-  intro.textContent = `${accessRequest.playerLabel} wants to connect a phone to ${accessRequest.characterCount} owned character${accessRequest.characterCount === 1 ? "" : "s"}. Approve only if this player is currently asking to connect.`;
+  const isPasswordReset = accessRequest.kind === "password-reset";
+  intro.textContent = isPasswordReset
+    ? `${accessRequest.playerLabel} requested a Pocket Chronicle password reset. Approving lets this phone replace the saved app password and signs out older phones for this account.`
+    : `${accessRequest.playerLabel} wants to connect a phone to ${accessRequest.characterCount} owned character${accessRequest.characterCount === 1 ? "" : "s"}. Approve only if this player is currently asking to connect.`;
   content.append(intro);
 
   const DialogV2 = foundry.applications?.api?.DialogV2;
   if (DialogV2) {
     return DialogV2.wait({
-      window: { title: "Pocket Chronicle Phone Request" },
+      window: { title: isPasswordReset ? "Pocket Chronicle Password Reset" : "Pocket Chronicle Phone Request" },
       content: content.outerHTML,
       modal: true,
       rejectClose: false,
       buttons: [
         { action: "later", label: "Later", callback: () => "later" },
         { action: "deny", label: "Deny", icon: "fa-solid fa-ban", callback: () => "deny" },
-        { action: "approve", label: "Approve Phone", icon: "fa-solid fa-mobile-screen-button", default: true, callback: () => "approve" },
+        { action: "approve", label: isPasswordReset ? "Approve Reset" : "Approve Phone", icon: "fa-solid fa-mobile-screen-button", default: true, callback: () => "approve" },
       ],
     });
   }
 
   return new Promise((resolve) => {
     new Dialog({
-      title: "Pocket Chronicle Phone Request",
+      title: isPasswordReset ? "Pocket Chronicle Password Reset" : "Pocket Chronicle Phone Request",
       content: content.outerHTML,
       buttons: {
         later: { label: "Later", callback: () => resolve("later") },
         deny: { label: "Deny", callback: () => resolve("deny") },
-        approve: { label: "Approve Phone", callback: () => resolve("approve") },
+        approve: { label: isPasswordReset ? "Approve Reset" : "Approve Phone", callback: () => resolve("approve") },
       },
       default: "approve",
       close: () => resolve("later"),
@@ -493,7 +496,7 @@ async function pollAccessRequests(announceEmpty = false) {
   try {
     const result = await bridgeFetch("/api/bridge/access-requests");
     const requests = (result.requests || []).filter((entry) => !displayedAccessRequests.has(entry.id));
-    if (announceEmpty && requests.length === 0) ui.notifications.info("No phones are waiting for approval.");
+    if (announceEmpty && requests.length === 0) ui.notifications.info("No phone connections or password resets are waiting for approval.");
     for (const accessRequest of requests) {
       displayedAccessRequests.add(accessRequest.id);
       const decision = await chooseAccessDecision(accessRequest);
@@ -503,7 +506,9 @@ async function pollAccessRequests(announceEmpty = false) {
           body: JSON.stringify({ decision }),
         });
         ui.notifications.info(decision === "approve"
-          ? `${accessRequest.playerLabel}'s phone was approved.`
+          ? accessRequest.kind === "password-reset"
+            ? `${accessRequest.playerLabel}'s password reset was approved.`
+            : `${accessRequest.playerLabel}'s phone was approved.`
           : `${accessRequest.playerLabel}'s phone request was denied.`);
       } else {
         displayedAccessRequests.delete(accessRequest.id);
