@@ -43,7 +43,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v053.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v054.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -63,13 +63,15 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(page, /characters\.map/);
   assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(manifest, /"orientation": "portrait-primary"/);
+  assert.match(manifest, /"id": "\/"/);
+  assert.match(manifest, /"scope": "\/"/);
   assert.match(schema, /export const tenants/);
   assert.match(schema, /export const playerSessions/);
   assert.match(schema, /export const playerAccounts/);
   assert.match(schema, /export const playerAccountCharacters/);
   assert.match(schema, /export const accountPairingCodes/);
   assert.match(schema, /export const phoneAccessRequests/);
-  assert.match(bridge, /only the active GM|activeGms/i);
+  assert.match(bridge, /stale tab/i);
   assert.match(bridge, /api\/bridge\/heartbeat/);
   assert.match(bridge, /campaignCodeReady/);
   assert.match(bridge, /hasCompleteConfig/);
@@ -81,8 +83,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
-  assert.match(compatibilityLoader, /bridge-v053\.js/);
-  assert.match(moduleManifest, /bridge-v053\.js/);
+  assert.match(compatibilityLoader, /bridge-v054\.js/);
+  assert.match(moduleManifest, /bridge-v054\.js/);
   assert.match(heartbeat, /pairingPasswordHash/);
   assert.match(security, /PBKDF2/);
   assert.match(accountMigration, /CREATE TABLE `player_accounts`/);

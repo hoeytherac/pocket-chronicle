@@ -71,9 +71,9 @@ Hooks.on("updateSetting", (setting) => {
 Hooks.on("closeSettingsConfig", () => scheduleCampaignCodeSync());
 
 function isActiveBridgeHost() {
-  if (!game.user?.isGM || !game.settings.get(MODULE_ID, "enabled")) return false;
-  const activeGms = game.users.filter((user) => user.active && user.isGM).sort((a, b) => a.id.localeCompare(b.id));
-  return activeGms[0]?.id === game.user.id;
+  // Every enabled GM client may keep the bridge alive. Restricting this to the
+  // first "active" GM left the bridge stranded when Foundry retained a stale tab.
+  return Boolean(game.user?.isGM && game.settings.get(MODULE_ID, "enabled"));
 }
 
 function shouldRun() {
