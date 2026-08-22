@@ -56,6 +56,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(schema, /export const playerSessions/);
   assert.match(bridge, /only the active GM|activeGms/i);
   assert.match(bridge, /api\/bridge\/heartbeat/);
+  assert.match(bridge, /hasCompleteConfig/);
+  assert.match(bridge, /AbortController/);
+  assert.match(bridge, /pushAllSnapshots\.pending/);
   assert.match(worker, /request\.method === "OPTIONS"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });

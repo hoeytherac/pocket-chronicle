@@ -8,5 +8,5 @@
   "POCKET.BridgeKey.Name": "Private bridge key",
   "POCKET.BridgeKey.Hint": "Keep this secret. Players pair with short temporary codes instead.",
   "POCKET.PollMs.Name": "Action check interval",
-  "POCKET.PollMs.Hint": "How often the active GM checks for phone actions, in milliseconds."
+  "POCKET.PollMs.Hint": "How often the active GM checks for phone actions, in milliseconds. Five seconds is recommended."
 }

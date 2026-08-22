@@ -2,6 +2,8 @@
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
+const REQUEST_TIMEOUT_MS = 10000;
+let bridgeOnline = false;
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "enabled", {
@@ -17,7 +19,7 @@ Hooks.once("init", () => {
     name: "POCKET.BridgeKey.Name", hint: "POCKET.BridgeKey.Hint", scope: "world", config: true, type: String, default: "",
   });
   game.settings.register(MODULE_ID, "pollMs", {
-    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 2000, range: { min: 1000, max: 10000, step: 500 },
+    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 5000, range: { min: 2000, max: 10000, step: 500 },
   });
 });
 
@@ -42,7 +44,7 @@ Hooks.once("ready", () => {
     },
   };
 
-  if (!shouldRun()) return;
+  if (!isActiveBridgeHost()) return;
   startBridge();
 });
 
@@ -52,10 +54,14 @@ Hooks.on("createChatMessage", () => scheduleSnapshot());
 Hooks.on("updateJournalEntry", () => scheduleSnapshot());
 Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 
-function shouldRun() {
+function isActiveBridgeHost() {
   if (!game.user?.isGM || !game.settings.get(MODULE_ID, "enabled")) return false;
   const activeGms = game.users.filter((user) => user.active && user.isGM).sort((a, b) => a.id.localeCompare(b.id));
   return activeGms[0]?.id === game.user.id;
+}
+
+function shouldRun() {
+  return isActiveBridgeHost() && hasCompleteConfig();
 }
 
 function config() {
@@ -67,26 +73,44 @@ function config() {
   };
 }
 
-function startBridge() {
+function hasCompleteConfig() {
   const current = config();
-  if (!current.relayUrl || !current.campaignId || !current.bridgeKey) {
-    ui.notifications.warn("Pocket Chronicle Bridge needs its app address, campaign ID, and bridge key in Module Settings.");
+  if (!current.relayUrl || !current.campaignId || !current.bridgeKey) return false;
+  try {
+    const relay = new URL(current.relayUrl);
+    return relay.protocol === "https:" || ["localhost", "127.0.0.1"].includes(relay.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function startBridge() {
+  if (!hasCompleteConfig()) {
+    ui.notifications.warn("Pocket Chronicle Bridge is staying offline until its HTTPS app address, campaign ID, and bridge key are complete.");
     return;
   }
-  sendHeartbeat(true);
-  pushAllSnapshots();
-  window.setInterval(sendHeartbeat, 10000);
-  window.setInterval(pollActions, current.pollMs);
-  window.setInterval(pushAllSnapshots, 30000);
+  const current = config();
+  void sendHeartbeat(true).then((connected) => connected && pushAllSnapshots());
+  window.setInterval(() => void sendHeartbeat(), 10000);
+  window.setInterval(() => void pollActions(), current.pollMs);
+  window.setInterval(() => void pushAllSnapshots(), 30000);
   console.info(`${MODULE_ID} | Active GM bridge started`);
 }
 
 async function sendHeartbeat(announce = false) {
+  if (!shouldRun() || sendHeartbeat.pending) return false;
+  sendHeartbeat.pending = true;
   try {
     await bridgeFetch("/api/bridge/heartbeat", { method: "POST", body: "{}" });
+    bridgeOnline = true;
     if (announce) ui.notifications.info(`Pocket Chronicle connected to ${game.world.title}.`);
+    return true;
   } catch (error) {
+    bridgeOnline = false;
     console.debug(`${MODULE_ID} | Heartbeat paused`, error);
+    return false;
+  } finally {
+    sendHeartbeat.pending = false;
   }
 }
 
@@ -100,10 +124,21 @@ function headers() {
 }
 
 async function bridgeFetch(path, options = {}) {
+  if (!hasCompleteConfig()) throw new Error("Pocket Chronicle Bridge is not fully configured.");
   const current = config();
-  const response = await fetch(`${current.relayUrl}${path}`, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Pocket Chronicle returned ${response.status}.`);
-  return response.json();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${current.relayUrl}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...headers(), ...(options.headers || {}) },
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Pocket Chronicle returned ${response.status}.`);
+    return response.json();
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function scheduleSnapshot() {
@@ -113,14 +148,19 @@ function scheduleSnapshot() {
 }
 
 async function pushAllSnapshots() {
-  if (!shouldRun()) return;
-  const actors = game.actors.filter((actor) => actor.type === "character" && hasPlayerOwner(actor));
-  for (const actor of actors) {
-    try {
-      await bridgeFetch("/api/bridge/snapshot", { method: "POST", body: JSON.stringify(await buildSnapshot(actor)) });
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Snapshot failed for ${actor.name}`, error);
+  if (!shouldRun() || !bridgeOnline || pushAllSnapshots.pending) return;
+  pushAllSnapshots.pending = true;
+  try {
+    const actors = game.actors.filter((actor) => actor.type === "character" && hasPlayerOwner(actor));
+    for (const actor of actors) {
+      try {
+        await bridgeFetch("/api/bridge/snapshot", { method: "POST", body: JSON.stringify(await buildSnapshot(actor)) });
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Snapshot failed for ${actor.name}`, error);
+      }
     }
+  } finally {
+    pushAllSnapshots.pending = false;
   }
 }
 
@@ -185,12 +225,15 @@ async function buildSnapshot(actor) {
 }
 
 async function pollActions() {
-  if (!shouldRun()) return;
+  if (!shouldRun() || !bridgeOnline || pollActions.pending) return;
+  pollActions.pending = true;
   try {
     const result = await bridgeFetch("/api/bridge/actions");
     for (const action of result.actions || []) await executeAction(action);
   } catch (error) {
     console.debug(`${MODULE_ID} | Action poll paused`, error);
+  } finally {
+    pollActions.pending = false;
   }
 }
 
