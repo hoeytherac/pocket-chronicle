@@ -7,7 +7,7 @@ import { jsonError, requirePlayerSession } from "@/lib/server-auth";
 export async function GET(request: Request) {
   const session = await requirePlayerSession(request);
   if (!session) return jsonError("Pair this phone with a campaign to continue.", 401);
-  if (!isBridgeOnline(session.lastSeenAt)) return jsonError("The Foundry module is offline.", 503);
+  const bridgeOnline = isBridgeOnline(session.lastSeenAt);
 
   const db = getDb();
   if (session.accountId) {
@@ -42,6 +42,7 @@ export async function GET(request: Request) {
       revision: selected.revision,
       updatedAt: selected.updatedAt,
       account: { id: account.id, playerLabel: account.playerLabel },
+      bridgeOnline,
       characters: parsed.map(({ snapshot }) => ({
         uuid: snapshot.actor.uuid,
         name: snapshot.actor.name,
@@ -62,5 +63,5 @@ export async function GET(request: Request) {
   if (!snapshot) return jsonError("Your character is paired, but Foundry has not sent its first update yet.", 404);
   const payload = JSON.parse(snapshot.payloadJson);
   payload.campaign.edition = session.edition;
-  return Response.json({ snapshot: payload, revision: snapshot.revision, updatedAt: snapshot.updatedAt });
+  return Response.json({ snapshot: payload, revision: snapshot.revision, updatedAt: snapshot.updatedAt, bridgeOnline });
 }

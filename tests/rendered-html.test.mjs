@@ -83,6 +83,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /hasCompleteConfig/);
   assert.match(bridge, /AbortController/);
   assert.match(bridge, /pushAllSnapshots\.pending/);
+  assert.match(bridge, /wakeBridge/);
   assert.match(bridge, /campaignCode/);
   assert.ok(bridge.indexOf('"campaignId"') < bridge.indexOf('"campaignCode"'));
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));

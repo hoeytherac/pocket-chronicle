@@ -54,6 +54,7 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [accountLink, setAccountLink] = useState<AccountLink | null>(null);
+  const [bridgeAvailable, setBridgeAvailable] = useState(false);
   const [characters, setCharacters] = useState<ChronicleCharacterChoice[]>([]);
   const [selectedActorUuid, setSelectedActorUuid] = useState("");
   const [selectedJournal, setSelectedJournal] = useState<ChronicleJournal | null>(null);
@@ -71,7 +72,9 @@ export default function Home() {
         snapshot: ChronicleSnapshot;
         characters?: ChronicleCharacterChoice[];
         account?: { id: string; playerLabel: string };
+        bridgeOnline?: boolean;
       };
+      setBridgeAvailable(Boolean(data.bridgeOnline));
       setSnapshot(data.snapshot);
       setCharacters(data.characters || [{
         uuid: data.snapshot.actor.uuid,
@@ -174,13 +177,18 @@ export default function Home() {
 
   async function sendAction(kind: ChronicleActionKind, payload: Record<string, unknown>, success: string) {
     if (mode !== "live") return false;
+    if (!bridgeAvailable) {
+      setNotice("Foundry is sleeping. Your saved character and journals remain available; rolls and edits will resume when the GM reopens Foundry.");
+      window.setTimeout(() => setNotice(""), 5200);
+      return false;
+    }
     const response = await fetch("/api/actions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ actorUuid: actor.uuid, kind, payload }),
     });
     if (!response.ok) {
-      if (response.status === 503) setMode("offline");
+      if (response.status === 503) setBridgeAvailable(false);
       setNotice("Foundry could not receive that action yet.");
       return false;
     }
@@ -611,10 +619,10 @@ export default function Home() {
           <button className="quiet-button" type="button" aria-label="Account and connection settings" onClick={() => setSettingsOpen(true)}>•••</button>
         </header>
 
-        <div className="connection-strip" role="status">
+        <div className={`connection-strip ${bridgeAvailable ? "" : "offline"}`} role="status">
           <span className="status-dot" aria-hidden="true" />
-          <span>Connected to {snapshot.campaign.name}</span>
-          <span className="edition-badge">{snapshot.campaign.edition}</span>
+          <span>{bridgeAvailable ? `Connected to ${snapshot.campaign.name}` : `${snapshot.campaign.name} · saved data`}</span>
+          <span className="edition-badge">{bridgeAvailable ? snapshot.campaign.edition : "Foundry sleeping"}</span>
         </div>
 
         <div className={`scroll-view tab-${activeTab}`}>

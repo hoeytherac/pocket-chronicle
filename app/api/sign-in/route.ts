@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { campaigns, playerAccounts, tenants } from "@/db/schema";
-import { isBridgeOnline } from "@/lib/bridge-presence";
 import { hasProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
 import type { Edition, SubscriptionStatus } from "@/lib/protocol";
@@ -22,7 +21,6 @@ export async function POST(request: Request) {
       campaignId: campaigns.id,
       campaignName: campaigns.name,
       campaignStatus: campaigns.status,
-      lastSeenAt: campaigns.lastSeenAt,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
     })
@@ -36,7 +34,6 @@ export async function POST(request: Request) {
   if (!account || !entitled || account.campaignStatus !== "active" || !account.credentialHash) {
     return jsonError("That Pocket Chronicle account could not be signed in.", 401);
   }
-  if (!isBridgeOnline(account.lastSeenAt)) return jsonError("The Foundry module is offline.", 503);
   if (!(await verifyPassword(body.password, account.credentialHash))) return jsonError("That password is incorrect.", 401);
 
   const session = await createPlayerAccountSession(account.accountId, account.campaignId);

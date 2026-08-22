@@ -82,6 +82,8 @@ h1 { font-size: 24px; line-height: 1; }
 }
 
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #3aa982; box-shadow: 0 0 0 3px rgba(58, 169, 130, .12); }
+.connection-strip.offline .status-dot { background: #b88a46; box-shadow: 0 0 0 3px rgba(184, 138, 70, .14); }
+.connection-strip.offline .edition-badge { color: #d4ad6c; }
 .edition-badge { margin-left: auto; color: var(--gold); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
 .scroll-view { min-height: 0; overflow-y: auto; padding: 27px 20px 34px; scrollbar-width: none; }
 .scroll-view::-webkit-scrollbar { display: none; }

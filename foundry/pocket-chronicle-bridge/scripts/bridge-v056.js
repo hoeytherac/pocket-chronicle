@@ -5,6 +5,7 @@ const SHARED_FLAG = "shared";
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
 let bridgeLastError = "";
+let bridgeStarted = false;
 const displayedAccessRequests = new Set();
 
 Hooks.once("init", () => {
@@ -105,10 +106,15 @@ function hasCompleteConfig() {
 }
 
 function startBridge() {
+  if (bridgeStarted) {
+    void wakeBridge();
+    return;
+  }
   if (!hasCompleteConfig()) {
     ui.notifications.warn("Pocket Chronicle Bridge is staying offline until its HTTPS app address, campaign ID, and bridge key are complete.");
     return;
   }
+  bridgeStarted = true;
   const current = config();
   void sendHeartbeat(true).then(async (connected) => {
     if (!connected) return;
@@ -120,7 +126,19 @@ function startBridge() {
   window.setInterval(() => void pollActions(), current.pollMs);
   window.setInterval(() => void pollAccessRequests(), current.pollMs);
   window.setInterval(() => void pushAllSnapshots(), 30000);
+  window.addEventListener("focus", wakeBridge);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void wakeBridge();
+  });
+  window.addEventListener("online", wakeBridge);
   console.info(`${MODULE_ID} | Active GM bridge started`);
+}
+
+async function wakeBridge() {
+  if (!shouldRun()) return;
+  const connected = await sendHeartbeat();
+  if (!connected) return;
+  await Promise.allSettled([pollActions(), pollAccessRequests(), pushAllSnapshots()]);
 }
 
 async function sendHeartbeat(announce = false) {
