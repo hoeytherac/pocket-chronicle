@@ -4,12 +4,13 @@ const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
-let campaignCodeSynced = false;
+let bridgeLastError = "";
 const displayedAccessRequests = new Set();
 
 Hooks.once("init", () => {
-  game.settings.register(MODULE_ID, "enabled", {
-    name: "POCKET.Enable.Name", hint: "POCKET.Enable.Hint", scope: "world", config: true, type: Boolean, default: false,
+  game.settings.register(MODULE_ID, "mapFree", {
+    name: "POCKET.MapFree.Name", hint: "POCKET.MapFree.Hint", scope: "client", config: true, type: Boolean, default: true, requiresReload: true,
+    onChange: (value) => void game.settings.set("core", "noCanvas", Boolean(value)),
   });
   game.settings.register(MODULE_ID, "relayUrl", {
     name: "POCKET.RelayUrl.Name", hint: "POCKET.RelayUrl.Hint", scope: "world", config: true, type: String, default: "",
@@ -26,11 +27,14 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "pollMs", {
     name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 5000, range: { min: 2000, max: 10000, step: 500 },
   });
+  if (game.settings.get(MODULE_ID, "mapFree") && !game.settings.get("core", "noCanvas")) {
+    void game.settings.set("core", "noCanvas", true);
+  }
 });
 
 Hooks.once("ready", () => {
   const moduleRecord = game.modules.get(MODULE_ID);
-  moduleRecord.api = {
+  if (moduleRecord) moduleRecord.api = {
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
@@ -52,7 +56,7 @@ Hooks.once("ready", () => {
     },
   };
 
-  if (!isActiveBridgeHost()) return;
+  if (!game.user?.isGM) return;
   startBridge();
 });
 
@@ -65,15 +69,14 @@ Hooks.on("updateUser", () => scheduleSnapshot());
 Hooks.on("renderSettingsConfig", (_application, html) => configureSettingsUi(html));
 Hooks.on("updateSetting", (setting) => {
   if (setting?.key !== `${MODULE_ID}.campaignCode`) return;
-  campaignCodeSynced = false;
   scheduleCampaignCodeSync();
 });
 Hooks.on("closeSettingsConfig", () => scheduleCampaignCodeSync());
 
 function isActiveBridgeHost() {
-  // Every enabled GM client may keep the bridge alive. Restricting this to the
-  // first "active" GM left the bridge stranded when Foundry retained a stale tab.
-  return Boolean(game.user?.isGM && game.settings.get(MODULE_ID, "enabled"));
+  // Enabling the module in Module Management is the on/off switch. Avoid a
+  // second setting which can silently leave an otherwise active module offline.
+  return Boolean(game.user?.isGM);
 }
 
 function shouldRun() {
@@ -83,9 +86,9 @@ function shouldRun() {
 function config() {
   return {
     relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
-    campaignId: String(game.settings.get(MODULE_ID, "campaignId") || ""),
+    campaignId: String(game.settings.get(MODULE_ID, "campaignId") || "").trim(),
     campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase(),
-    bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || ""),
+    bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || "").trim(),
     pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
   };
 }
@@ -109,6 +112,7 @@ function startBridge() {
   const current = config();
   void sendHeartbeat(true).then(async (connected) => {
     if (!connected) return;
+    await syncCampaignCode(false);
     await pushAllSnapshots();
     await pollAccessRequests();
   });
@@ -123,18 +127,18 @@ async function sendHeartbeat(announce = false) {
   if (!shouldRun() || sendHeartbeat.pending) return false;
   sendHeartbeat.pending = true;
   try {
-    const code = config().campaignCode;
-    const includeCode = !campaignCodeSynced && /^[A-Z0-9]{6}$/.test(code);
-    const result = await bridgeFetch("/api/bridge/heartbeat", {
+    await bridgeFetch("/api/bridge/heartbeat", {
       method: "POST",
-      body: JSON.stringify(includeCode ? { campaignCode: code } : {}),
+      body: "{}",
     });
     bridgeOnline = true;
-    if (result.campaignCodeReady) campaignCodeSynced = true;
+    bridgeLastError = "";
     if (announce) ui.notifications.info(`Pocket Chronicle connected to ${game.world.title}.`);
     return true;
   } catch (error) {
     bridgeOnline = false;
+    bridgeLastError = error.message || String(error);
+    if (announce) ui.notifications.error(`Pocket Chronicle is offline: ${bridgeLastError}`);
     console.debug(`${MODULE_ID} | Heartbeat paused`, error);
     return false;
   } finally {
@@ -181,7 +185,6 @@ async function syncCampaignCode(announce = false) {
       method: "POST",
       body: JSON.stringify({ code }),
     });
-    campaignCodeSynced = true;
     if (announce || result.changed) ui.notifications.info("Pocket Chronicle Campaign code is ready.");
     return true;
   } catch (error) {

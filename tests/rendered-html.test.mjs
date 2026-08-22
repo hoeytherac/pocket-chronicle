@@ -43,7 +43,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v054.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v055.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -71,21 +71,22 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(schema, /export const playerAccountCharacters/);
   assert.match(schema, /export const accountPairingCodes/);
   assert.match(schema, /export const phoneAccessRequests/);
-  assert.match(bridge, /stale tab/i);
+  assert.match(bridge, /Module Management/);
   assert.match(bridge, /api\/bridge\/heartbeat/);
-  assert.match(bridge, /campaignCodeReady/);
+  assert.match(bridge, /api\/bridge\/campaign-code/);
+  assert.match(bridge, /core", "noCanvas/);
   assert.match(bridge, /hasCompleteConfig/);
   assert.match(bridge, /AbortController/);
   assert.match(bridge, /pushAllSnapshots\.pending/);
   assert.match(bridge, /campaignCode/);
-  assert.match(bridge, /api\/bridge\/campaign-code/);
   assert.ok(bridge.indexOf('"campaignId"') < bridge.indexOf('"campaignCode"'));
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /Check Phone Requests/);
   assert.match(bridge, /api\/bridge\/access-requests/);
-  assert.match(compatibilityLoader, /bridge-v054\.js/);
-  assert.match(moduleManifest, /bridge-v054\.js/);
-  assert.match(heartbeat, /pairingPasswordHash/);
+  assert.match(compatibilityLoader, /bridge-v055\.js/);
+  assert.match(moduleManifest, /bridge-v055\.js/);
+  assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
+  assert.match(heartbeat, /lastSeenAt/);
   assert.match(security, /PBKDF2/);
   assert.match(accountMigration, /CREATE TABLE `player_accounts`/);
   assert.match(accessMigration, /CREATE TABLE `phone_access_requests`/);

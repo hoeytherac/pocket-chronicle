@@ -1,6 +1,6 @@
 {
-  "POCKET.Enable.Name": "Enable Pocket Chronicle bridge",
-  "POCKET.Enable.Hint": "An enabled GM browser keeps approved character and journal data connected to the phone app.",
+  "POCKET.MapFree.Name": "Use map-free mode on this browser",
+  "POCKET.MapFree.Hint": "Keeps Foundry's Scene canvas disabled on this browser while using Pocket Chronicle. Changing this requires a reload.",
   "POCKET.RelayUrl.Name": "Pocket Chronicle app address",
   "POCKET.RelayUrl.Hint": "The HTTPS address of your deployed Pocket Chronicle app.",
   "POCKET.CampaignId.Name": "Campaign ID",
