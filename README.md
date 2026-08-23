@@ -21,9 +21,9 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - dedicated Spells tab grouped by cantrips and spell level, with jewel-like live slot meters and a selectable casting slot
 - dedicated Effects tab for the character's currently applied Foundry conditions, spell effects, and feature effects
 - separate Actions, Feats, and Items shelves with tap-to-read details and no character-sheet item limit
-- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, including Foundry keep/drop, reroll, explode, minimum, and maximum modifiers
+- activity-aware local phone rolls for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, including Foundry keep/drop, reroll, explode, minimum, and maximum modifiers
 - attack activities roll the attack and every attached damage/healing formula together, using the selected casting level and D&D 5e cantrip scaling
-- lazy-loaded 3D physics dice use a mobile timeout and automatic quick-result fallback; a stalled renderer is fully discarded and rebuilt after a short cooldown instead of being reused
+- instant blue-silver coin reveals, sparkling roll details, and 30-second tap-to-close result cards replace the unreliable mobile physics renderer
 - separate positive-number controls for damage and healing, sent as one Foundry update
 - spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
 - chosen spell slots, activity uses, item uses, quantities, and linked native resources are spent on the authoritative Foundry character sheet without a Foundry-authored roll card

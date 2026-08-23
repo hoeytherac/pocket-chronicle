@@ -40,10 +40,11 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, mobile, mobileScript, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, mobileStyle, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/mobile.css", import.meta.url), "utf8"),
     readFile(new URL("../public/recover.html", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
@@ -76,12 +77,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=23"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=24"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=11/);
-  assert.match(mobile, /mobile\.css\?v=11/);
+  assert.match(mobile, /mobile\.js\?v=12/);
+  assert.match(mobile, /mobile\.css\?v=12/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="effects"/);
   assert.match(mobile, /Foundry companion/i);
@@ -102,15 +103,18 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /rollsByLevel/);
   assert.match(mobileScript, /slotKey/);
   assert.match(mobileScript, /phone-dice-tray/);
-  assert.match(mobileScript, /vendor\/dice-box\/dice-box\.es\.min\.js/);
-  assert.match(mobileScript, /rollPhysicalDice/);
-  assert.match(mobileScript, /resolveWithin/);
-  assert.match(mobileScript, /physicalDiceDisabled/);
-  assert.match(mobileScript, /pausePhysicalDice/);
-  assert.match(mobileScript, /resetPhysicalDiceEngine/);
-  assert.match(mobileScript, /physicalDiceGeneration/);
-  assert.match(mobileScript, /layer\.replaceChildren\(\)/);
-  assert.match(mobileScript, /Quick result used because 3D dice took too long/);
+  assert.doesNotMatch(mobileScript, /vendor\/dice-box/);
+  assert.doesNotMatch(mobileScript, /rollPhysicalDice|physicalDiceDisabled|Physics dice/);
+  assert.match(mobileScript, /rollSparkles/);
+  assert.match(mobileScript, /resultCoin/);
+  assert.match(mobileScript, /Tap anywhere to close · Stays open for 30 seconds/);
+  assert.match(mobileScript, /window\.setTimeout\(close, 30000\)/);
+  assert.match(mobileStyle, /grid-template-columns: repeat\(12, 1fr\)/);
+  assert.match(mobileStyle, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobileStyle, /bottom-nav button:nth-child\(n \+ 5\)/);
+  assert.match(mobileStyle, /roll-coin-reveal/);
+  assert.match(mobileStyle, /roll-sparkle/);
+  assert.match(mobileStyle, /roll-hold 30s/);
   assert.match(mobileScript, /await rollLocalFormula\("Death saving throw"/);
   assert.match(mobileScript, /consumptionByOption/);
   assert.match(mobileScript, /Native rolls and charges work here/);

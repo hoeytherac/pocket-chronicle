@@ -1499,191 +1499,21 @@
     } catch { return null; }
   }
 
-  function diceNotationGroups(formula) {
-    var source = String(formula || "").toLowerCase().replace(/\((\d+)\)d(\d+)/g, "$1d$2");
-    var pattern = /(\d*)d(\d+)(?:(?:kh|kl|dh|dl)\d+)?/g;
-    var groups = [];
-    var match;
-    var total = 0;
-    while ((match = pattern.exec(source))) {
-      var qty = Number(match[1] || 1);
-      var sides = Number(match[2]);
-      if (!Number.isInteger(qty) || !Number.isInteger(sides) || qty < 1 || sides < 2) return [];
-      total += qty;
-      groups.push({ qty: qty, sides: sides, groupId: groups.length });
-    }
-    return total <= 30 ? groups : [];
-  }
-
-  var diceBoxPromise = null;
-  var diceBoxInstance = null;
-  var physicalDiceDisabled = false;
-  var physicalDiceRetryTimer = 0;
-  var physicalDiceGeneration = 0;
-
-  function prefersReducedMotion() {
-    return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }
-
-  function canTryPhysicalDice() {
-    return !physicalDiceDisabled && !prefersReducedMotion();
-  }
-
-  function resetPhysicalDiceEngine() {
-    physicalDiceGeneration += 1;
-    var oldInstance = diceBoxInstance;
-    diceBoxInstance = null;
-    diceBoxPromise = null;
-    try { if (oldInstance) oldInstance.clear(); } catch { /* The renderer may already be unresponsive. */ }
-    var layer = document.getElementById("physics-dice-layer");
-    if (layer) {
-      layer.classList.remove("active");
-      layer.replaceChildren();
-    }
-  }
-
-  function pausePhysicalDice() {
-    physicalDiceDisabled = true;
-    resetPhysicalDiceEngine();
-    window.clearTimeout(physicalDiceRetryTimer);
-    physicalDiceRetryTimer = window.setTimeout(function () {
-      physicalDiceDisabled = false;
-    }, 15000);
-  }
-
-  function resolveWithin(promise, milliseconds) {
-    return Promise.race([
-      Promise.resolve(promise),
-      new Promise(function (resolve) { window.setTimeout(function () { resolve(null); }, milliseconds); })
-    ]);
-  }
-
-  function physicalDiceLayer() {
-    var layer = document.getElementById("physics-dice-layer");
-    if (!layer) {
-      layer = create("div", "physics-dice-layer");
-      layer.id = "physics-dice-layer";
-      layer.setAttribute("aria-hidden", "true");
-      document.body.appendChild(layer);
-    }
-    return layer;
-  }
-
-  async function getDiceBox() {
-    if (diceBoxInstance) return diceBoxInstance;
-    if (!canTryPhysicalDice()) return null;
-    if (!diceBoxPromise) {
-      physicalDiceLayer();
-      var generation = physicalDiceGeneration;
-      diceBoxPromise = import("/vendor/dice-box/dice-box.es.min.js").then(async function (module) {
-        var DiceBox = module.default;
-        var box = new DiceBox({
-          container: "#physics-dice-layer",
-          assetPath: "/vendor/dice-box/assets/",
-          theme: "default",
-          themeColor: "#7faed2",
-          enableShadows: false,
-          shadowTransparency: 0.78,
-          lightIntensity: 0.72,
-          offscreen: false,
-          scale: 4,
-          delay: 25
-        });
-        await box.init();
-        if (generation !== physicalDiceGeneration) {
-          try { box.clear(); } catch { /* A newer renderer has already taken over. */ }
-          return null;
-        }
-        diceBoxInstance = box;
-        return box;
-      }).catch(function (error) {
-        console.warn("Pocket Chronicle 3D dice are unavailable; using the lightweight roller.", error);
-        if (generation === physicalDiceGeneration) diceBoxPromise = null;
-        return null;
-      });
-    }
-    return diceBoxPromise;
-  }
-
-  async function rollPhysicalDice(formula) {
-    var groups = diceNotationGroups(formula);
-    if (!groups.length || !canTryPhysicalDice()) return null;
-    var box = await resolveWithin(getDiceBox(), 5000);
-    if (!box) {
-      pausePhysicalDice();
-      return null;
-    }
-    var layer = physicalDiceLayer();
-    layer.classList.add("active");
-    try {
-      var results = await resolveWithin(box.roll(groups, { theme: "default", themeColor: "#7faed2" }), 5000);
-      if (!results) {
-        pausePhysicalDice();
-        try { box.clear(); } catch { /* The layer is hidden below even if the renderer stopped responding. */ }
-        return null;
-      }
-      var supplied = [];
-      groups.forEach(function (group) {
-        (results || []).filter(function (die) { return Number(die.groupId) === Number(group.groupId); })
-          .sort(function (a, b) { return Number(a.rollId) - Number(b.rollId); })
-          .forEach(function (die) { supplied.push({ sides: Number(group.sides), result: Number(die.value) }); });
-      });
-      return supplied.length === groups.reduce(function (sum, group) { return sum + group.qty; }, 0) ? supplied : null;
-    } catch (error) {
-      console.warn("Pocket Chronicle used its lightweight dice fallback.", error);
-      pausePhysicalDice();
-      return null;
-    } finally {
-      layer.classList.remove("active");
-    }
-  }
-
-  function showRollPreparing(label) {
-    var old = document.getElementById("roll-result-overlay");
-    if (old) old.remove();
-    var overlay = create("div", "roll-overlay");
-    overlay.id = "roll-result-overlay";
-    overlay.setAttribute("role", "status");
-    var scrim = create("span", "roll-scrim");
-    var card = create("section", "roll-result-card preparing");
-    card.appendChild(create("p", "eyebrow", "Physics dice"));
-    card.appendChild(create("h2", "", label));
-    var tray = create("div", "phone-dice-tray");
-    tray.appendChild(create("span", "roll-preparing-mark"));
-    card.appendChild(tray);
-    card.appendChild(create("small", "roll-result-note", "Preparing your dice…"));
-    overlay.appendChild(scrim);
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-  }
-
   async function rollLocalFormula(label, formula, kind) {
-    var test = evaluateLocalFormula(formula);
-    if (!test) {
-      showToast("That roll formula is not available on this phone yet.", 4200);
-      return null;
-    }
-    var groups = diceNotationGroups(formula);
-    var suppliedDice = null;
-    var triedPhysics = groups.length > 0 && canTryPhysicalDice();
-    if (triedPhysics) {
-      showRollPreparing(label || formula);
-      suppliedDice = await rollPhysicalDice(formula);
-    }
-    var result = suppliedDice ? evaluateLocalFormula(formula, suppliedDice) : test;
+    var result = evaluateLocalFormula(formula);
     if (!result) {
       showToast("That roll formula is not available on this phone yet.", 4200);
       return null;
     }
-    var roll = makeLocalRoll(label, formula, kind, result, triedPhysics && !suppliedDice);
+    var roll = makeLocalRoll(label, formula, kind, result);
     writeLocalRoll(roll);
-    showRollResult(roll, Boolean(suppliedDice));
+    showRollResult(roll);
     mirrorRollToDiceSoNice(roll);
     if (state.tab === "chat") renderChat();
     return roll;
   }
 
-  function makeLocalRoll(label, formula, kind, result, animationFallback) {
+  function makeLocalRoll(label, formula, kind, result) {
     var actor = state.snapshot && state.snapshot.actor;
     return {
       id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
@@ -1696,7 +1526,6 @@
       total: result.total,
       breakdown: result.breakdown,
       dice: result.dice,
-      animationFallback: Boolean(animationFallback),
       timestamp: Date.now()
     };
   }
@@ -1718,28 +1547,16 @@
       showToast("This activity does not have a usable phone roll formula. Its Foundry automation is still shown in the activity details.", 5200);
       return [];
     }
-    var combinedFormula = prepared.map(function (row) { return "(" + row.entry.formula + ")"; }).join("+");
-    var groups = diceNotationGroups(combinedFormula);
-    var suppliedDice = null;
-    var triedPhysics = groups.length > 0 && canTryPhysicalDice();
-    if (triedPhysics) {
-      showRollPreparing(label);
-      suppliedDice = await rollPhysicalDice(combinedFormula);
-    }
-    var suppliedPosition = 0;
     var rolls = [];
     prepared.forEach(function (row) {
-      var diceCount = diceNotationGroups(row.entry.formula).reduce(function (sum, group) { return sum + group.qty; }, 0);
-      var supplied = suppliedDice ? suppliedDice.slice(suppliedPosition, suppliedPosition + diceCount) : null;
-      suppliedPosition += diceCount;
-      var result = supplied ? evaluateLocalFormula(row.entry.formula, supplied) : row.test;
+      var result = row.test;
       if (!result) return;
-      var roll = makeLocalRoll(label + " · " + row.entry.label, row.entry.formula, row.entry.kind || "item", result, triedPhysics && !suppliedDice);
+      var roll = makeLocalRoll(label + " · " + row.entry.label, row.entry.formula, row.entry.kind || "item", result);
       writeLocalRoll(roll);
       rolls.push(roll);
     });
     if (!rolls.length) return [];
-    showActivityRollResult(label, rolls, Boolean(suppliedDice));
+    showActivityRollResult(label, rolls);
     mirrorDiceToDiceSoNice(rolls.flatMap(function (roll) { return roll.dice || []; }));
     if (state.tab === "chat") renderChat();
     return rolls;
@@ -1763,11 +1580,68 @@
   }
 
   var rollCloseTimer = 0;
-  function showRollResult(roll, usedPhysics) {
+
+  function rollSparkles() {
+    var field = create("span", "roll-sparkles");
+    field.setAttribute("aria-hidden", "true");
+    for (var index = 0; index < 12; index += 1) {
+      var sparkle = create("i", index % 3 === 0 ? "gold" : "");
+      sparkle.style.setProperty("--spark-angle", (index * 30) + "deg");
+      sparkle.style.setProperty("--spark-delay", (-index * 240) + "ms");
+      field.appendChild(sparkle);
+    }
+    return field;
+  }
+
+  function resultCoin(value, compact) {
+    var sigil = create("div", "roll-result-sigil" + (compact ? " compact" : ""));
+    sigil.setAttribute("aria-hidden", "true");
+    var orbit = create("span", "roll-coin-orbit");
+    orbit.appendChild(create("i"));
+    orbit.appendChild(create("i"));
+    sigil.appendChild(orbit);
+    var coin = create("span", "roll-result-coin");
+    coin.appendChild(create("small", "", compact ? "SEQUENCE" : "RESULT"));
+    coin.appendChild(create("strong", "roll-result-total", String(value)));
+    sigil.appendChild(coin);
+    return sigil;
+  }
+
+  function armRollOverlay(overlay, card, scrim) {
+    var closed = false;
+    var timer = create("span", "roll-timer-bar");
+    timer.setAttribute("aria-hidden", "true");
+    card.appendChild(timer);
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", "Close roll result");
+    function close() {
+      if (closed) return;
+      closed = true;
+      window.clearTimeout(rollCloseTimer);
+      overlay.classList.add("closing");
+      window.setTimeout(function () { overlay.remove(); }, 180);
+    }
+    function closeWithKey(event) {
+      if (["Enter", " ", "Escape"].includes(event.key)) {
+        event.preventDefault();
+        close();
+      }
+    }
+    scrim.addEventListener("click", close);
+    card.addEventListener("click", close);
+    card.addEventListener("keydown", closeWithKey);
+    document.body.appendChild(overlay);
+    card.focus({ preventScroll: true });
+    window.setTimeout(function () { overlay.classList.remove("rolling"); }, 1100);
+    rollCloseTimer = window.setTimeout(close, 30000);
+  }
+
+  function showRollResult(roll) {
     var old = document.getElementById("roll-result-overlay");
     if (old) old.remove();
     window.clearTimeout(rollCloseTimer);
-    var overlay = create("div", "roll-overlay" + (usedPhysics ? "" : " rolling"));
+    var overlay = create("div", "roll-overlay rolling");
     overlay.id = "roll-result-overlay";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-label", roll.label + ": " + roll.total);
@@ -1775,9 +1649,11 @@
     scrim.type = "button";
     scrim.setAttribute("aria-label", "Close roll result");
     var card = create("section", "roll-result-card");
+    card.appendChild(rollSparkles());
     card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "healing" ? "Healing roll" : roll.kind === "attack" ? "Attack roll" : "Phone dice"));
     card.appendChild(create("h2", "", roll.label));
     var stage = create("div", "dice-stage");
+    stage.appendChild(resultCoin(roll.total, false));
     var tray = create("div", "phone-dice-tray");
     (roll.dice || []).slice(0, 12).forEach(function (die, index) {
       var dieElement = create("span", "phone-die phone-d" + die.sides + (die.kept === false ? " dropped" : ""));
@@ -1788,30 +1664,19 @@
     });
     if ((roll.dice || []).length > 12) tray.appendChild(create("span", "dice-more", "+" + ((roll.dice || []).length - 12)));
     stage.appendChild(tray);
-    stage.appendChild(create("strong", "roll-result-total", String(roll.total)));
     card.appendChild(stage);
     card.appendChild(create("p", "roll-result-breakdown", roll.formula + "  ·  " + roll.breakdown));
-    card.appendChild(create("small", "roll-result-note", roll.animationFallback
-      ? "Quick result used because 3D dice took too long"
-      : "Saved to this phone's roll history"));
+    card.appendChild(create("small", "roll-result-note", "Tap anywhere to close · Stays open for 30 seconds"));
     overlay.appendChild(scrim);
     overlay.appendChild(card);
-    function close() {
-      overlay.classList.add("closing");
-      window.setTimeout(function () { overlay.remove(); }, 180);
-    }
-    scrim.addEventListener("click", close);
-    card.addEventListener("click", close);
-    document.body.appendChild(overlay);
-    window.setTimeout(function () { overlay.classList.remove("rolling"); }, 720);
-    rollCloseTimer = window.setTimeout(close, 4300);
+    armRollOverlay(overlay, card, scrim);
   }
 
-  function showActivityRollResult(label, rolls, usedPhysics) {
+  function showActivityRollResult(label, rolls) {
     var old = document.getElementById("roll-result-overlay");
     if (old) old.remove();
     window.clearTimeout(rollCloseTimer);
-    var overlay = create("div", "roll-overlay" + (usedPhysics ? "" : " rolling"));
+    var overlay = create("div", "roll-overlay rolling");
     overlay.id = "roll-result-overlay";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-label", label + " results");
@@ -1819,6 +1684,8 @@
     scrim.type = "button";
     scrim.setAttribute("aria-label", "Close roll results");
     var card = create("section", "roll-result-card activity-roll-result-card");
+    card.appendChild(rollSparkles());
+    card.appendChild(resultCoin("✦", true));
     card.appendChild(create("p", "eyebrow", "Attack sequence"));
     card.appendChild(create("h2", "", label));
     var resultList = create("div", "sequence-results");
@@ -1832,20 +1699,10 @@
       resultList.appendChild(row);
     });
     card.appendChild(resultList);
-    card.appendChild(create("small", "roll-result-note", rolls.some(function (roll) { return roll.animationFallback; })
-      ? "Quick result used because 3D dice took too long"
-      : "Attack and damage were saved to this phone's roll history"));
+    card.appendChild(create("small", "roll-result-note", "Tap anywhere to close · Stays open for 30 seconds"));
     overlay.appendChild(scrim);
     overlay.appendChild(card);
-    function close() {
-      overlay.classList.add("closing");
-      window.setTimeout(function () { overlay.remove(); }, 180);
-    }
-    scrim.addEventListener("click", close);
-    card.addEventListener("click", close);
-    document.body.appendChild(overlay);
-    window.setTimeout(function () { overlay.classList.remove("rolling"); }, 720);
-    rollCloseTimer = window.setTimeout(close, 5600);
+    armRollOverlay(overlay, card, scrim);
   }
 
   function openItemDetails(uuid) {
@@ -2062,6 +1919,6 @@
   }
 
   if (window.__POCKET_TEST_MODE__) {
-    window.__POCKET_TEST__ = { evaluateLocalFormula: evaluateLocalFormula, diceNotationGroups: diceNotationGroups };
+    window.__POCKET_TEST__ = { evaluateLocalFormula: evaluateLocalFormula };
   }
 })();
