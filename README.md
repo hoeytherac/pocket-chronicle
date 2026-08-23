@@ -24,7 +24,7 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - activity-aware local phone rolls for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, including Foundry keep/drop, reroll, explode, minimum, and maximum modifiers
 - attack activities roll the attack and every attached damage/healing formula together, using the selected casting level and D&D 5e cantrip scaling
 - instant blue-silver coin reveals, sparkling roll details, and 30-second tap-to-close result cards replace the unreliable mobile physics renderer
-- separate positive-number controls for damage and healing, sent as one Foundry update
+- separate positive-number controls for damage and healing, plus direct Temporary HP editing
 - spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
 - chosen spell slots, activity uses, item uses, quantities, and linked native resources are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
 - active Midi-QOL, CPR, CAT, and DAE integrations are identified without launching their target/canvas workflows from a local phone roll
@@ -32,7 +32,8 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - phone HP edits update temporary and current HP directly, so damage/healing signs stay correct without starting Midi-QOL concentration automation
 - GM-shared journal entries and images
 - table chat plus local d4/d6/d8/d10/d12/d20 rolls
-- GM-curated shop requests
+- GM-curated purchases that deduct the character's D&D5e currency and deliver stackable items to inventory
+- closed-by-default linked Resources at the bottom of the Sheet, so large automation lists stay out of the way
 - installable from Safari or Chrome using the phone's home-screen flow
 - no Scene canvas, map rendering, or Foundry desktop controls
 - locked connection screen whenever the paired Foundry module is offline
@@ -82,6 +83,8 @@ The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Fou
 For a forgotten password, the player taps **Forgot or reset this password** and re-enters the Campaign ID and Campaign code. The GM clicks **Check Requests / Resets** in the Pocket Chronicle Bridge settings and approves the named player. The phone then prompts for a new password, and older Pocket Chronicle sessions for that player are signed out.
 
 The bridge and every approval prompt use Foundry documents directly. They do not render or depend on the Scene canvas, so the canvas may remain disabled.
+
+The GM can open **Game Settings → Configure Settings → Pocket Chronicle Bridge → Open Shop Manager** to choose which world Items are sold on phones. Paid content modules can register private snapshot data and phone actions through the bridge extension API without placing their source in this public repository.
 
 To share content, use the bridge API from a GM macro:
 

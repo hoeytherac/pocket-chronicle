@@ -77,12 +77,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=26"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=27"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=14/);
-  assert.match(mobile, /mobile\.css\?v=14/);
+  assert.match(mobile, /mobile\.js\?v=15/);
+  assert.match(mobile, /mobile\.css\?v=15/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="effects"/);
   assert.match(mobile, /Foundry companion/i);
@@ -96,6 +96,11 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /Phone roll history/);
   assert.match(mobileScript, /hp-damage/);
   assert.match(mobileScript, /hp-healing/);
+  assert.match(mobileScript, /hp-temp/);
+  assert.match(mobileScript, /setTempHp/);
+  assert.match(mobileScript, /takeRationsRest/);
+  assert.match(mobileScript, /Rest & Rations/);
+  assert.match(mobileScript, /resource-disclosure/);
   assert.match(mobileScript, /hpChange = isDamage \? -amount : amount/);
   assert.match(mobileScript, /consumeItem/);
   assert.match(mobileScript, /showDice/);
@@ -152,6 +157,11 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /requestedByFoundryUserId/);
   assert.match(bridge, /GM-authored roll card/);
   assert.match(bridge, /recordDeathSave/);
+  assert.match(bridge, /setTempHp/);
+  assert.match(bridge, /registerExtension/);
+  assert.match(bridge, /executeExtensionAction/);
+  assert.match(bridge, /Open Shop Manager/);
+  assert.match(bridge, /currencyTotal/);
   assert.match(bridge, /consumeItem/);
   assert.match(bridge, /activity\.consume/);
   assert.doesNotMatch(bridge, /await activity\.use/);
@@ -184,7 +194,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.12\.5"/);
+  assert.match(moduleManifest, /"version": "0\.13\.0"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

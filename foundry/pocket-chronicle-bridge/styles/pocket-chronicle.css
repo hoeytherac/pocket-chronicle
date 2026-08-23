@@ -4,6 +4,23 @@
   background: linear-gradient(145deg, #314b66, #20354b);
 }
 
+.pocket-chronicle-shop-control .form-fields button {
+  border-color: #6f8faf;
+  color: #d6e9f7;
+  background: linear-gradient(145deg, #314b66, #20354b);
+}
+
+.pocket-chronicle-shop-manager {
+  display: grid;
+  gap: 12px;
+}
+
+.pocket-chronicle-shop-manager > p { margin: 0; line-height: 1.45; }
+.pocket-chronicle-shop-list { max-height: 52vh; overflow-y: auto; display: grid; gap: 6px; }
+.pocket-chronicle-shop-row { padding: 9px 10px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; align-items: center; border: 1px solid rgba(111, 143, 175, .35); border-radius: 8px; }
+.pocket-chronicle-shop-row strong, .pocket-chronicle-shop-row small { display: block; }
+.pocket-chronicle-shop-row small { margin-top: 2px; opacity: .72; }
+
 .pocket-chronicle-player-picker {
   display: grid;
   gap: 12px;

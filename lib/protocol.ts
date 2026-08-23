@@ -3,6 +3,7 @@ export type SubscriptionStatus = "personal" | "trialing" | "active" | "past_due"
 
 export type ChronicleActionKind =
   | "adjustHp"
+  | "setTempHp"
   | "useItem"
   | "consumeItem"
   | "roll"
@@ -16,6 +17,7 @@ export type ChronicleActionKind =
   | "setInspiration"
   | "chat"
   | "purchase"
+  | "takeRationsRest"
   | "updateBiography"
   | "requestLevelUp";
 
@@ -36,6 +38,7 @@ export interface ChronicleActor {
   };
   level: number;
   hp: { value: number; max: number; temp?: number };
+  currency?: Partial<Record<"cp" | "sp" | "ep" | "gp" | "pp", number>>;
   ac: number;
   speed: number;
   initiative?: number;
@@ -186,6 +189,31 @@ export interface ChronicleShopItem {
   image?: string;
 }
 
+export interface ChronicleProvisionOption {
+  uuid: string;
+  key: string;
+  name: string;
+  kind: "food" | "water";
+  tier: string;
+  quantity: number;
+  effect: string;
+}
+
+export interface ChronicleHitDicePool {
+  denomination: string;
+  value: number;
+  max: number;
+}
+
+export interface ChronicleRestRationsExtension {
+  enabled: boolean;
+  food: ChronicleProvisionOption[];
+  water: ChronicleProvisionOption[];
+  hitDice: ChronicleHitDicePool[];
+  proficiencyBonus: number;
+  exemptions?: { food?: boolean; water?: boolean };
+}
+
 export interface ChronicleSnapshot {
   campaign: { id: string; name: string; edition: Edition };
   actor: ChronicleActor;
@@ -193,6 +221,10 @@ export interface ChronicleSnapshot {
   journals: ChronicleJournal[];
   messages: ChronicleMessage[];
   shop: ChronicleShopItem[];
+  extensions?: {
+    restRations?: ChronicleRestRationsExtension;
+    [key: string]: unknown;
+  };
   session: { title: string; subtitle: string; dateLabel?: string };
   revision: number;
   generatedAt: number;
@@ -209,6 +241,7 @@ export interface QueuedChronicleAction {
 
 export const allowedActionKinds = new Set<ChronicleActionKind>([
   "adjustHp",
+  "setTempHp",
   "useItem",
   "consumeItem",
   "roll",
@@ -222,6 +255,7 @@ export const allowedActionKinds = new Set<ChronicleActionKind>([
   "setInspiration",
   "chat",
   "purchase",
+  "takeRationsRest",
   "updateBiography",
   "requestLevelUp",
 ]);

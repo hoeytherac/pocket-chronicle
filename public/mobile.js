@@ -319,7 +319,8 @@
     return button;
   }
 
-  function hpActionForm(kind, labelText, buttonText, placeholder) {
+  function hpActionForm(kind, labelText, buttonText, placeholder, options) {
+    options = options || {};
     var form = create("form", "hp-action hp-action-" + kind);
     form.dataset.form = "hp-" + kind;
     var field = document.createElement("label");
@@ -331,9 +332,10 @@
     input.type = "number";
     input.inputMode = "numeric";
     input.step = "1";
-    input.min = "1";
+    input.min = String(options.min === undefined ? 1 : options.min);
     input.max = "999";
     input.placeholder = placeholder;
+    if (options.value !== undefined && options.value !== null) input.value = String(options.value);
     input.required = true;
     field.appendChild(input);
     form.appendChild(field);
@@ -650,6 +652,144 @@
     return card;
   }
 
+  function restRationsData() {
+    var extension = state.snapshot && state.snapshot.extensions && state.snapshot.extensions.restRations;
+    return extension && extension.enabled ? extension : null;
+  }
+
+  function restLaunchCard(location) {
+    var extension = restRationsData();
+    if (!extension) return null;
+    var card = create("section", "rest-launch-card " + (location === "home" ? "rest-launch-home" : "rest-launch-sheet"));
+    var sigil = create("span", "rest-launch-sigil", "☾");
+    var copy = document.createElement("div");
+    copy.appendChild(create("small", "eyebrow", "Rest & Rations"));
+    copy.appendChild(create("strong", "", "Make camp"));
+    copy.appendChild(create("span", "", "Choose provisions, spend Hit Dice, and rest safely."));
+    var button = create("button", "", "Rest");
+    button.type = "button";
+    button.dataset.action = "open-rest";
+    card.append(sigil, copy, button);
+    return card;
+  }
+
+  function provisionSelect(labelText, name, provisions, exempt) {
+    var label = create("label", "field-label rest-provision-field", labelText);
+    var select = document.createElement("select");
+    select.name = name;
+    select.required = !exempt;
+    var empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = exempt ? "Not required for this character" : provisions.length ? "Choose one serving" : "No servings in inventory";
+    select.appendChild(empty);
+    provisions.forEach(function (provision) {
+      var option = document.createElement("option");
+      option.value = provision.uuid;
+      option.textContent = provision.name + " · " + provision.quantity + " available";
+      option.dataset.effect = provision.effect || "";
+      select.appendChild(option);
+    });
+    select.disabled = exempt;
+    label.appendChild(select);
+    return label;
+  }
+
+  function openRestPanel() {
+    var extension = restRationsData();
+    if (!extension) return;
+    document.getElementById("modal-title").textContent = "Rest & Rations";
+    var form = create("form", "rest-form");
+    form.dataset.form = "rations-rest";
+    var intro = create("section", "rest-intro");
+    intro.appendChild(create("span", "rest-intro-sigil", "☾"));
+    var introCopy = document.createElement("div");
+    introCopy.appendChild(create("strong", "", "Prepare the camp"));
+    introCopy.appendChild(create("small", "", "One food and one water serving are consumed only after a successful rest."));
+    intro.appendChild(introCopy);
+    form.appendChild(intro);
+
+    var typeLabel = create("label", "field-label", "Rest type");
+    var restType = document.createElement("select");
+    restType.name = "restType";
+    [["short", "Short rest"], ["long", "Long rest"]].forEach(function (entry) {
+      var option = document.createElement("option");
+      option.value = entry[0];
+      option.textContent = entry[1];
+      restType.appendChild(option);
+    });
+    typeLabel.appendChild(restType);
+    form.appendChild(typeLabel);
+
+    var exemptions = extension.exemptions || {};
+    var provisions = create("div", "rest-provisions");
+    provisions.appendChild(provisionSelect("Food serving", "foodItemUuid", extension.food || [], Boolean(exemptions.food)));
+    provisions.appendChild(provisionSelect("Water serving", "waterItemUuid", extension.water || [], Boolean(exemptions.water)));
+    form.appendChild(provisions);
+
+    var hitDice = create("section", "rest-hit-dice");
+    hitDice.appendChild(create("strong", "", "Hit Dice to spend"));
+    hitDice.appendChild(create("small", "", "Choose how many Hit Dice to spend during this short rest."));
+    (extension.hitDice || []).forEach(function (pool) {
+      var row = create("label", "rest-hit-die-row");
+      var copy = document.createElement("span");
+      copy.appendChild(create("strong", "", String(pool.denomination || "Hit Die").toUpperCase()));
+      copy.appendChild(create("small", "", pool.value + " of " + pool.max + " available"));
+      var input = document.createElement("input");
+      input.type = "number";
+      input.inputMode = "numeric";
+      input.name = "hitDice";
+      input.min = "0";
+      input.max = String(Math.max(0, Number(pool.value || 0)));
+      input.step = "1";
+      input.value = "0";
+      input.dataset.denomination = pool.denomination;
+      row.append(copy, input);
+      hitDice.appendChild(row);
+    });
+    if (!(extension.hitDice || []).length) hitDice.appendChild(create("p", "form-note", "No Hit Dice are currently available."));
+    form.appendChild(hitDice);
+
+    var preview = create("div", "rest-preview");
+    preview.appendChild(create("strong", "", "Provision effects"));
+    preview.appendChild(create("small", "", "Hearty Feast: proficiency bonus on every Hit Die spent; 25 temporary HP after a long rest. Spoiled food and tainted water add exhaustion after resting."));
+    form.appendChild(preview);
+    var confirm = submitButton("Complete short rest");
+    confirm.classList.add("rest-submit");
+    form.appendChild(confirm);
+    var missingRequired = (!exemptions.food && !(extension.food || []).length) || (!exemptions.water && !(extension.water || []).length);
+    confirm.disabled = missingRequired;
+    if (missingRequired) form.appendChild(create("p", "form-error", "Purchase food and water from the Shop before resting."));
+
+    restType.addEventListener("change", function () {
+      var shortRest = restType.value === "short";
+      hitDice.hidden = !shortRest;
+      confirm.textContent = shortRest ? "Complete short rest" : "Complete long rest";
+    });
+    form.addEventListener("submit", submitRationsRest);
+    elements.modalContent.replaceChildren(form);
+    elements.modal.hidden = false;
+  }
+
+  async function submitRationsRest(event) {
+    event.preventDefault();
+    var form = event.currentTarget;
+    var restType = form.elements.restType.value;
+    var hitDice = restType === "short" ? Array.from(form.querySelectorAll("input[name='hitDice']")).flatMap(function (input) {
+      var count = Number(input.value || 0);
+      return Number.isInteger(count) && count > 0 ? [{ denomination: input.dataset.denomination, count: count }] : [];
+    }) : [];
+    var submit = form.querySelector("button[type='submit']");
+    submit.disabled = true;
+    var ok = await sendAction("takeRationsRest", {
+      restType: restType,
+      foodItemUuid: form.elements.foodItemUuid ? form.elements.foodItemUuid.value : "",
+      waterItemUuid: form.elements.waterItemUuid ? form.elements.waterItemUuid.value : "",
+      hitDice: hitDice
+    }, restType === "short" ? "Short rest completed." : "Long rest completed.");
+    if (ok) closeSettings();
+    else submit.disabled = false;
+  }
+
   function renderHome() {
     var snapshot = state.snapshot;
     var fragment = document.createDocumentFragment();
@@ -657,6 +797,8 @@
     var picker = characterPicker();
     if (picker) fragment.appendChild(picker);
     fragment.appendChild(heroCard());
+    var homeRest = restLaunchCard("home");
+    if (homeRest) fragment.appendChild(homeRest);
 
     var session = create("section", "card session-card");
     session.appendChild(create("p", "eyebrow", snapshot.session.dateLabel || "Current session"));
@@ -709,7 +851,8 @@
     var hp = create("section", "hp-controls hp-split-controls");
     hp.appendChild(hpActionForm("damage", "Damage taken", "Damage", "10"));
     hp.appendChild(hpActionForm("healing", "Hit points healed", "Heal", "15"));
-    hp.appendChild(create("small", "hp-help", "Enter positive whole numbers only. Damage is subtracted and healing is added automatically."));
+    hp.appendChild(hpActionForm("temp", "Temporary HP", "Set temp HP", "0", { min: 0, value: actor.hp.temp || 0 }));
+    hp.appendChild(create("small", "hp-help", "Enter positive whole numbers for damage and healing. Temporary HP may be set to 0."));
     fragment.appendChild(hp);
 
     var quick = create("div", "character-quick-actions");
@@ -720,6 +863,8 @@
     inspiration.classList.add(actor.inspiration ? "inspiration-ready" : "inspiration-empty");
     quick.appendChild(inspiration);
     fragment.appendChild(quick);
+    var sheetRest = restLaunchCard("sheet");
+    if (sheetRest) fragment.appendChild(sheetRest);
 
     var death = actor.deathSaves || { successes: 0, failures: 0 };
     var deathCard = create("section", "death-card");
@@ -787,25 +932,6 @@
     if (!(actor.skills || []).length) skills.appendChild(emptyState("Skills will appear after the updated Foundry module syncs."));
     fragment.appendChild(skills);
 
-    var resources = actor.resources || [];
-    if (resources.length) {
-      fragment.appendChild(sectionHeading("Resources", resources.length + " linked pools"));
-      var resourceGrid = create("div", "resource-grid");
-      resources.forEach(function (resource) {
-        var resourceCard = create("section", "resource-card");
-        var resourceCopy = create("div", "resource-copy");
-        resourceCopy.appendChild(create("strong", "", resource.label));
-        resourceCopy.appendChild(create("small", "", resource.kind === "activity" ? "Activity uses" : resource.kind === "item" ? "Item uses" : "Character resource"));
-        resourceCard.appendChild(resourceCopy);
-        resourceCard.appendChild(create("span", "resource-value", resource.value + " / " + resource.max));
-        var meter = create("span", "resource-meter");
-        meter.style.setProperty("--resource-fill", Math.max(0, Math.min(100, (Number(resource.value || 0) / Math.max(1, Number(resource.max || 1))) * 100)) + "%");
-        resourceCard.appendChild(meter);
-        resourceGrid.appendChild(resourceCard);
-      });
-      fragment.appendChild(resourceGrid);
-    }
-
     var characterFeatures = (actor.actions || []).filter(function (item) { return (item.category || item.type) !== "spell"; });
     fragment.appendChild(sectionHeading("Character features", characterFeatures.length + " entries"));
     var categories = create("div", "sheet-tabs");
@@ -846,7 +972,36 @@
     levelButton.type = "button";
     levelButton.dataset.action = "level-up";
     fragment.appendChild(levelButton);
+
+    var resources = actor.resources || [];
+    if (resources.length) fragment.appendChild(resourceDisclosure(resources));
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function resourceDisclosure(resources) {
+    var details = create("details", "resource-disclosure");
+    var summary = document.createElement("summary");
+    var summaryCopy = document.createElement("span");
+    summaryCopy.appendChild(create("strong", "", "Resources"));
+    summaryCopy.appendChild(create("small", "", resources.length + " linked pools"));
+    summary.appendChild(summaryCopy);
+    summary.appendChild(create("span", "resource-chevron", "⌄"));
+    details.appendChild(summary);
+    var resourceGrid = create("div", "resource-grid");
+    resources.forEach(function (resource) {
+      var resourceCard = create("section", "resource-card");
+      var resourceCopy = create("div", "resource-copy");
+      resourceCopy.appendChild(create("strong", "", resource.label));
+      resourceCopy.appendChild(create("small", "", resource.kind === "activity" ? "Activity uses" : resource.kind === "item" ? "Item uses" : "Character resource"));
+      resourceCard.appendChild(resourceCopy);
+      resourceCard.appendChild(create("span", "resource-value", resource.value + " / " + resource.max));
+      var meter = create("span", "resource-meter");
+      meter.style.setProperty("--resource-fill", Math.max(0, Math.min(100, (Number(resource.value || 0) / Math.max(1, Number(resource.max || 1))) * 100)) + "%");
+      resourceCard.appendChild(meter);
+      resourceGrid.appendChild(resourceCard);
+    });
+    details.appendChild(resourceGrid);
+    return details;
   }
 
   function itemRow(item) {
@@ -1098,7 +1253,11 @@
 
   function renderShop() {
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("GM curated", "Campaign shop", "Purchases are sent to Foundry for delivery."));
+    fragment.appendChild(pageTitle("GM curated", "Campaign shop", "Purchases deduct your character’s Foundry currency and arrive in inventory."));
+    var wallet = create("section", "shop-wallet");
+    wallet.appendChild(create("small", "eyebrow", "Current wallet"));
+    wallet.appendChild(create("strong", "", formatCurrency(state.snapshot.actor.currency || {})));
+    fragment.appendChild(wallet);
     var list = create("div", "shop-list");
     state.snapshot.shop.forEach(function (item) {
       var card = create("article", "shop-card");
@@ -1107,7 +1266,7 @@
       copy.appendChild(create("p", "", item.description));
       copy.appendChild(create("strong", "shop-price", item.price + " " + item.currency));
       card.appendChild(copy);
-      var button = create("button", "", "Request");
+      var button = create("button", "", "Buy");
       button.type = "button";
       button.dataset.action = "purchase";
       button.dataset.value = item.uuid;
@@ -1118,6 +1277,14 @@
     if (!state.snapshot.shop.length) list.appendChild(emptyState("The campaign shop is empty right now."));
     fragment.appendChild(list);
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function formatCurrency(currency) {
+    var values = ["pp", "gp", "ep", "sp", "cp"].flatMap(function (key) {
+      var value = Number(currency[key] || 0);
+      return value > 0 ? [value + " " + key] : [];
+    });
+    return values.length ? values.join(" · ") : "0 cp";
   }
 
   function stat(label, value) {
@@ -1199,8 +1366,11 @@
       openItemDetails(button.dataset.value);
     } else if (action === "level-up") {
       sendAction("requestLevelUp", {}, "Your character edit or level-up request was sent.");
+    } else if (action === "open-rest") {
+      openRestPanel();
     } else if (action === "purchase") {
-      sendAction("purchase", { itemUuid: button.dataset.value, quantity: 1 }, (button.dataset.label || "Item") + " requested.");
+      button.disabled = true;
+      sendAction("purchase", { itemUuid: button.dataset.value, quantity: 1 }, (button.dataset.label || "Item") + " purchased and added to inventory.").then(function () { button.disabled = false; });
     }
   }
 
@@ -1224,6 +1394,14 @@
       sendAction("adjustHp", { amount: hpChange }, amount + (isDamage ? " damage applied in Foundry." : " healing applied in Foundry.")).then(function (ok) {
         if (ok) hpInput.value = "";
       });
+    } else if (form.dataset.form === "hp-temp") {
+      var tempInput = form.querySelector("input[name='amount']");
+      var tempValue = Number(tempInput.value);
+      if (!Number.isInteger(tempValue) || tempValue < 0 || tempValue > 999) {
+        showToast("Temporary HP must be a whole number from 0 to 999.", 4200);
+        return;
+      }
+      sendAction("setTempHp", { value: tempValue }, "Temporary HP updated in Foundry.");
     } else if (form.dataset.form === "biography") {
       var biography = form.querySelector("#biography").value;
       sendAction("updateBiography", { biography: biography }, "Biography update sent to Foundry.");

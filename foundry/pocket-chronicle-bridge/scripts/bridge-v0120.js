@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.12.0 */
+/* Pocket Chronicle Bridge v0.13.0 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -10,6 +10,7 @@ let bridgeStarted = false;
 let activePhoneUserId = "";
 let activePhoneActorId = "";
 const displayedAccessRequests = new Set();
+const bridgeExtensions = new Map();
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "mapFree", {
@@ -39,11 +40,28 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
+    version: "0.13.0",
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
     syncCampaignCode,
     pushNow: pushAllSnapshots,
+    registerExtension: (id, extension) => {
+      const key = String(id || "").trim();
+      if (!key || !extension || typeof extension !== "object") throw new Error("A Pocket Chronicle extension needs an ID and configuration object.");
+      bridgeExtensions.set(key, extension);
+      scheduleSnapshot();
+      return () => {
+        bridgeExtensions.delete(key);
+        scheduleSnapshot();
+      };
+    },
+    unregisterExtension: (id) => {
+      const removed = bridgeExtensions.delete(String(id || ""));
+      if (removed) scheduleSnapshot();
+      return removed;
+    },
+    openShopManager,
     shareJournal: async (uuid, shared = true) => {
       const journal = await fromUuid(uuid);
       if (!journal || journal.documentName !== "JournalEntry") throw new Error("Choose a Journal Entry.");
@@ -302,6 +320,34 @@ function finiteNumber(...values) {
     if (Number.isFinite(number)) return number;
   }
   return 0;
+}
+
+const CURRENCY_IN_COPPER = { cp: 1, sp: 10, ep: 50, gp: 100, pp: 1000 };
+
+function actorCurrency(actor) {
+  return Object.fromEntries(Object.keys(CURRENCY_IN_COPPER).map((key) => [key, Math.max(0, Math.floor(finiteNumber(actor.system?.currency?.[key])))]));
+}
+
+function currencyTotal(currency) {
+  return Object.entries(CURRENCY_IN_COPPER).reduce((total, [key, value]) => total + (Math.max(0, Math.floor(finiteNumber(currency?.[key]))) * value), 0);
+}
+
+function currencyFromCopper(total) {
+  let remaining = Math.max(0, Math.floor(finiteNumber(total)));
+  const result = {};
+  for (const key of ["pp", "gp", "ep", "sp", "cp"]) {
+    const value = CURRENCY_IN_COPPER[key];
+    result[key] = Math.floor(remaining / value);
+    remaining %= value;
+  }
+  return result;
+}
+
+function shopPrice(item) {
+  const denomination = String(item.system?.price?.denomination || "gp").toLowerCase();
+  const currency = CURRENCY_IN_COPPER[denomination] ? denomination : "gp";
+  const value = Math.max(0, finiteNumber(item.system?.price?.value, item.system?.price));
+  return { value, currency, copper: Math.round(value * CURRENCY_IN_COPPER[currency]) };
 }
 
 function itemCategory(item) {
@@ -605,6 +651,31 @@ function moduleIntegrations() {
   ];
 }
 
+async function extensionSnapshotData(actor) {
+  const data = {};
+  for (const [id, extension] of bridgeExtensions.entries()) {
+    if (typeof extension.getSnapshotData !== "function") continue;
+    try {
+      const value = await extension.getSnapshotData(actor);
+      if (value !== undefined) data[id] = value;
+    } catch (error) {
+      console.error(`${MODULE_ID} | Extension ${id} could not prepare phone data`, error);
+    }
+  }
+  return data;
+}
+
+async function executeExtensionAction(action, context) {
+  for (const extension of bridgeExtensions.values()) {
+    const actionKinds = Array.isArray(extension.actionKinds) ? extension.actionKinds : [];
+    const canHandle = actionKinds.includes(action.kind)
+      || (typeof extension.canHandleAction === "function" && await extension.canHandleAction(action, context));
+    if (!canHandle || typeof extension.executeAction !== "function") continue;
+    return extension.executeAction(action, context);
+  }
+  throw new Error("Unsupported phone action.");
+}
+
 function activityAutomation(item, activity) {
   const flags = { ...(item.flags || {}), ...(activity.flags || {}) };
   const providers = [];
@@ -832,6 +903,7 @@ async function buildSnapshot(actor) {
       },
       level,
       hp: { value: Number(system.attributes?.hp?.value || 0), max: Number(system.attributes?.hp?.max || 0), temp: Number(system.attributes?.hp?.temp || 0) },
+      currency: actorCurrency(actor),
       ac: Number(system.attributes?.ac?.value || 10),
       speed: Number(system.attributes?.movement?.walk || 0),
       initiative: finiteNumber(system.attributes?.init?.mod, system.attributes?.init?.total),
@@ -873,7 +945,11 @@ async function buildSnapshot(actor) {
       return { uuid: journal.uuid, title: journal.name, summary: content.slice(0, 180), content, image: assetUrl(pages.find((page) => page.src)?.src), updatedAt: Number(journal._stats?.modifiedTime || Date.now()) };
     })),
     messages,
-    shop: shop.map((item) => ({ uuid: item.uuid, name: item.name, description: plainText(item.system?.description?.value || ""), price: Number(item.system?.price?.value || item.system?.price || 0), currency: item.system?.price?.denomination || "gp", image: assetUrl(item.img) })),
+    shop: shop.map((item) => {
+      const price = shopPrice(item);
+      return { uuid: item.uuid, name: item.name, description: plainText(item.system?.description?.value || ""), price: price.value, currency: price.currency, image: assetUrl(item.img) };
+    }),
+    extensions: await extensionSnapshotData(actor),
     session: { title: game.world.title, subtitle: "Shared from Foundry" },
     revision: 0,
     generatedAt: Date.now(),
@@ -930,6 +1006,13 @@ async function executeAction(action) {
           value: Number(actor.system.attributes.hp.value || 0),
           temp: Number(actor.system.attributes.hp.temp || 0),
         };
+        break;
+      }
+      case "setTempHp": {
+        const value = Number(action.payload.value);
+        if (!Number.isInteger(value) || value < 0 || value > 999) throw new Error("Temporary HP must be a whole number from 0 to 999.");
+        await actor.update({ "system.attributes.hp.temp": value }, { pocketChronicle: true });
+        result = { value };
         break;
       }
       case "useItem":
@@ -1036,8 +1119,34 @@ async function executeAction(action) {
       case "purchase": {
         const item = await fromUuid(action.payload.itemUuid);
         if (!item || !item.getFlag(MODULE_ID, SHOP_FLAG)) throw new Error("That shop item is unavailable.");
-        await actor.createEmbeddedDocuments("Item", [item.toObject()]);
-        result = { item: item.name };
+        const quantity = Math.max(1, Math.min(99, Math.floor(Number(action.payload.quantity || 1))));
+        const price = shopPrice(item);
+        const totalPrice = price.copper * quantity;
+        const beforeCurrency = actorCurrency(actor);
+        const available = currencyTotal(beforeCurrency);
+        if (available < totalPrice) throw new Error(`${actor.name} does not have enough currency for ${item.name}.`);
+        const afterCurrency = currencyFromCopper(available - totalPrice);
+        const currencyUpdate = Object.fromEntries(Object.entries(afterCurrency).map(([key, value]) => [`system.currency.${key}`, value]));
+        await actor.update(currencyUpdate, { pocketChronicle: true });
+        try {
+          const provisionKey = item.getFlag("pocket-chronicle-rest-rations", "provisionKey");
+          const stackable = ["consumable", "loot"].includes(item.type);
+          const existing = stackable ? actor.items.find((owned) => provisionKey
+            ? owned.getFlag("pocket-chronicle-rest-rations", "provisionKey") === provisionKey
+            : owned.type === item.type && owned.name === item.name) : null;
+          if (existing) await existing.update({ "system.quantity": Math.max(0, Number(existing.system?.quantity || 0)) + quantity });
+          else {
+            const itemData = item.toObject();
+            delete itemData._id;
+            if (itemData.system && "quantity" in itemData.system) itemData.system.quantity = quantity;
+            await actor.createEmbeddedDocuments("Item", [itemData]);
+          }
+        } catch (error) {
+          const rollback = Object.fromEntries(Object.entries(beforeCurrency).map(([key, value]) => [`system.currency.${key}`, value]));
+          await actor.update(rollback, { pocketChronicle: true });
+          throw error;
+        }
+        result = { item: item.name, quantity, spent: totalPrice, currency: price.currency, remainingCurrency: afterCurrency };
         break;
       }
       case "updateBiography":
@@ -1048,7 +1157,7 @@ async function executeAction(action) {
         ui.notifications.info(`${actor.name} requested a character edit or level up.`);
         break;
       default:
-        throw new Error("Unsupported phone action.");
+        result = await executeExtensionAction(action, { actor, actingUser, messageData });
     }
     await completeAction(action.id, true, result);
     scheduleSnapshot();
@@ -1071,6 +1180,61 @@ async function createPairing(actorUuid, playerLabel = "Player") {
   const result = await bridgeFetch("/api/bridge/pairing-codes", { method: "POST", body: JSON.stringify({ actorUuid, playerLabel }) });
   ui.notifications.info(`Pocket Chronicle code for ${playerLabel}: ${result.code} (expires in 10 minutes)`);
   return result.code;
+}
+
+async function openShopManager() {
+  if (!game.user?.isGM) throw new Error("Only a GM can manage the Pocket Chronicle shop.");
+  const items = [...game.items].sort((a, b) => a.name.localeCompare(b.name));
+  if (!items.length) {
+    ui.notifications.warn("Create or import at least one world Item before opening the phone shop manager.");
+    return false;
+  }
+  const rows = items.map((item) => {
+    const permanent = Boolean(item.getFlag("pocket-chronicle-rest-rations", "permanentShop"));
+    const checked = permanent || Boolean(item.getFlag(MODULE_ID, SHOP_FLAG));
+    const price = shopPrice(item);
+    return `<label class="pocket-chronicle-shop-row"><input type="checkbox" data-item-id="${item.id}" ${checked ? "checked" : ""} ${permanent ? "disabled" : ""}><span><strong>${foundry.utils.escapeHTML(item.name)}</strong><small>${foundry.utils.escapeHTML(item.type)} · ${price.value} ${price.currency}${permanent ? " · Rest & Rations fixture" : ""}</small></span></label>`;
+  }).join("");
+  const content = `<form class="pocket-chronicle-shop-manager"><p>Choose the world Items players can purchase in the phone app. Rest & Rations provisions remain permanent shop fixtures.</p><div class="pocket-chronicle-shop-list">${rows}</div></form>`;
+  const readSelection = (button) => new Set(Array.from(button?.form?.querySelectorAll("input[data-item-id]:checked") || []).map((input) => input.dataset.itemId));
+  const DialogV2 = foundry.applications?.api?.DialogV2;
+  let selected = null;
+  if (DialogV2) {
+    selected = await DialogV2.wait({
+      window: { title: "Pocket Chronicle Shop Manager" },
+      content,
+      modal: true,
+      rejectClose: false,
+      buttons: [
+        { action: "cancel", label: "Cancel", callback: () => null },
+        { action: "save", label: "Save Shop", icon: "fa-solid fa-store", default: true, callback: (_event, button) => readSelection(button) },
+      ],
+    });
+  } else {
+    selected = await new Promise((resolve) => {
+      new Dialog({
+        title: "Pocket Chronicle Shop Manager",
+        content,
+        buttons: {
+          cancel: { label: "Cancel", callback: () => resolve(null) },
+          save: { label: "Save Shop", callback: (html) => resolve(new Set(Array.from(html[0].querySelectorAll("input[data-item-id]:checked")).map((input) => input.dataset.itemId))) },
+        },
+        default: "save",
+        close: () => resolve(null),
+      }).render(true);
+    });
+  }
+  if (!(selected instanceof Set)) return false;
+  for (const item of items) {
+    const permanent = Boolean(item.getFlag("pocket-chronicle-rest-rations", "permanentShop"));
+    const shared = permanent || selected.has(item.id);
+    if (Boolean(item.getFlag(MODULE_ID, SHOP_FLAG)) === shared) continue;
+    if (shared) await item.setFlag(MODULE_ID, SHOP_FLAG, true);
+    else await item.unsetFlag(MODULE_ID, SHOP_FLAG);
+  }
+  await pushAllSnapshots();
+  ui.notifications.info("Pocket Chronicle shop updated.");
+  return true;
 }
 
 function configureSettingsUi(html) {
@@ -1117,6 +1281,23 @@ function configureSettingsUi(html) {
   hint.textContent = "Players use this code to connect. First-time phones and forgotten passwords appear here for your approval.";
   group.append(label, fields, hint);
   anchor.insertAdjacentElement("afterend", group);
+
+  const shopGroup = document.createElement("div");
+  shopGroup.className = "form-group pocket-chronicle-shop-control";
+  const shopLabel = document.createElement("label");
+  shopLabel.textContent = "Phone shop";
+  const shopFields = document.createElement("div");
+  shopFields.className = "form-fields";
+  const shopButton = document.createElement("button");
+  shopButton.type = "button";
+  shopButton.innerHTML = '<i class="fa-solid fa-store"></i> Open Shop Manager';
+  shopButton.addEventListener("click", () => void openShopManager());
+  shopFields.append(shopButton);
+  const shopHint = document.createElement("p");
+  shopHint.className = "hint";
+  shopHint.textContent = "Choose which world Items are sold in the Pocket Chronicle phone shop.";
+  shopGroup.append(shopLabel, shopFields, shopHint);
+  group.insertAdjacentElement("afterend", shopGroup);
 }
 
 async function chooseAccessDecision(accessRequest) {

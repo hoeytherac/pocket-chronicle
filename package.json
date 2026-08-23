@@ -1,6 +1,6 @@
 {
   "name": "pocket-chronicle",
-  "version": "0.12.5",
+  "version": "0.13.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
