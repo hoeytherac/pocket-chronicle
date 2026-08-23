@@ -20,7 +20,8 @@
     accessRequest: null,
     approvalTimer: 0,
     installPrompt: null,
-    refreshTimer: 0
+    refreshTimer: 0,
+    revision: 0
   };
 
   var elements = {};
@@ -119,7 +120,12 @@
     var result = await api(path);
 
     if (result.ok && result.data.snapshot) {
+      var previousActorUuid = state.snapshot && state.snapshot.actor && state.snapshot.actor.uuid;
+      var nextActorUuid = result.data.snapshot.actor && result.data.snapshot.actor.uuid;
+      var nextRevision = Number(result.data.revision || result.data.snapshot.revision || 0);
+      var unchanged = Boolean(silent && state.snapshot && previousActorUuid === nextActorUuid && state.revision === nextRevision);
       state.snapshot = result.data.snapshot;
+      state.revision = nextRevision;
       state.bridgeOnline = Boolean(result.data.bridgeOnline);
       state.characters = result.data.characters || [actorChoice(result.data.snapshot.actor)];
       if (result.data.account) {
@@ -130,7 +136,8 @@
         });
       }
       window.localStorage.setItem(CHARACTER_STORAGE, result.data.snapshot.actor.uuid);
-      showApp();
+      if (unchanged) updateStatus();
+      else showApp(Boolean(silent && previousActorUuid === nextActorUuid));
       return;
     }
 
@@ -551,14 +558,14 @@
     showCampaignConnect();
   }
 
-  function showApp() {
+  function showApp(preserveScroll) {
     elements.gate.hidden = true;
     elements.gateFooter.hidden = true;
     elements.appView.hidden = false;
     elements.statusStrip.hidden = false;
     elements.accountButton.hidden = false;
     updateStatus();
-    renderCurrentView();
+    renderCurrentView(!preserveScroll);
   }
 
   function updateStatus() {
@@ -576,18 +583,20 @@
     elements.appView.querySelectorAll(".bottom-nav button").forEach(function (button) {
       button.classList.toggle("active", button.dataset.tab === tab);
     });
-    renderCurrentView();
+    renderCurrentView(true);
   }
 
-  function renderCurrentView() {
+  function renderCurrentView(resetScroll) {
     if (!state.snapshot) return;
+    var previousScroll = elements.viewContent.scrollTop;
     if (state.tab === "home") renderHome();
     else if (state.tab === "character") renderCharacter();
     else if (state.tab === "spells") renderSpells();
+    else if (state.tab === "effects") renderEffects();
     else if (state.tab === "journal") renderJournal();
     else if (state.tab === "chat") renderChat();
     else if (state.tab === "shop") renderShop();
-    elements.viewContent.scrollTop = 0;
+    elements.viewContent.scrollTop = resetScroll === false ? previousScroll : 0;
   }
 
   function pageTitle(eyebrow, title, copy) {
@@ -939,6 +948,37 @@
     elements.viewContent.replaceChildren(fragment);
   }
 
+  function renderEffects() {
+    var actor = state.snapshot.actor;
+    var effects = actor.effects || [];
+    var fragment = document.createDocumentFragment();
+    fragment.appendChild(pageTitle("Character state", "Active effects", "Conditions, spell effects, and feature effects currently applied in Foundry."));
+    var picker = characterPicker();
+    if (picker) fragment.appendChild(picker);
+    fragment.appendChild(sectionHeading("In effect now", effects.length + (effects.length === 1 ? " effect" : " effects")));
+    var list = create("div", "effect-list");
+    effects.forEach(function (effect) {
+      var card = create("section", "effect-card");
+      if (effect.image) {
+        var image = document.createElement("img");
+        image.src = effect.image;
+        image.alt = "";
+        image.loading = "lazy";
+        card.appendChild(image);
+      } else card.appendChild(create("span", "effect-mark", "◈"));
+      var copy = create("div", "effect-copy");
+      copy.appendChild(create("h3", "", effect.name || "Effect"));
+      var meta = (effect.statuses || []).concat([effect.duration, effect.source].filter(Boolean));
+      if (meta.length) copy.appendChild(create("p", "effect-meta", meta.join(" · ")));
+      card.appendChild(copy);
+      if (effect.description) card.appendChild(create("p", "effect-description", effect.description));
+      list.appendChild(card);
+    });
+    if (!effects.length) list.appendChild(emptyState("No active effects are currently applied to this character."));
+    fragment.appendChild(list);
+    elements.viewContent.replaceChildren(fragment);
+  }
+
   function appendIdentity(parent, label, value) {
     if (!value) return;
     var field = create("div", "identity-field");
@@ -1264,16 +1304,20 @@
     var normalized = String(formula || "").toLowerCase()
       .replace(/\[[^\]]*]/g, "")
       .replace(/math\.(floor|ceil|round|abs|min|max)/g, "$1")
+      .replace(/\((\d+)\)d(\d+)/g, "$1d$2")
       .replace(/[−–—]/g, "-")
       .replace(/×/g, "*")
       .replace(/÷/g, "/")
-      .replace(/\s+/g, "");
+      .replace(/\s+/g, "")
+      .replace(/\+\+/g, "+")
+      .replace(/\+-/g, "-")
+      .replace(/--/g, "+");
     if (!normalized || normalized.length > 500) return null;
     var tokens = [];
     var cursor = 0;
     while (cursor < normalized.length) {
       var remaining = normalized.slice(cursor);
-      var diceMatch = remaining.match(/^\d*d\d+(?:(?:kh|kl|dh|dl)\d+)?/i);
+      var diceMatch = remaining.match(/^\d*d\d+(?:(?:kh|kl|dh|dl|k|d)\d*|(?:min|max)\d+|(?:rr|r|xo|x)\d*(?:(?:<=|>=|=|<|>)\d+)?)*/i);
       var numberMatch = remaining.match(/^\d+(?:\.\d+)?/);
       var nameMatch = remaining.match(/^[a-z]+/i);
       if (diceMatch) {
@@ -1304,12 +1348,11 @@
     }
 
     function rollDiceToken(source) {
-      var match = source.match(/^(\d*)d(\d+)(?:(kh|kl|dh|dl)(\d+))?$/i);
+      var match = source.match(/^(\d*)d(\d+)(.*)$/i);
       if (!match) throw new Error("dice");
       var count = Number(match[1] || 1);
       var sides = Number(match[2]);
-      var mode = match[3] || "";
-      var select = Number(match[4] || 0);
+      var modifiers = match[3] || "";
       if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) throw new Error("dice");
       var results = [];
       for (var die = 0; die < count; die += 1) {
@@ -1320,15 +1363,78 @@
         suppliedPosition += 1;
         results.push({ index: die, result: result, kept: true });
       }
-      if (mode) {
-        var ordered = results.slice().sort(function (a, b) { return a.result - b.result || a.index - b.index; });
-        var keep = new Set();
-        if (mode === "kh") ordered.slice(Math.max(0, ordered.length - select)).forEach(function (entry) { keep.add(entry.index); });
-        else if (mode === "kl") ordered.slice(0, select).forEach(function (entry) { keep.add(entry.index); });
-        else if (mode === "dh") ordered.slice(0, Math.max(0, ordered.length - select)).forEach(function (entry) { keep.add(entry.index); });
-        else if (mode === "dl") ordered.slice(Math.min(select, ordered.length)).forEach(function (entry) { keep.add(entry.index); });
-        results.forEach(function (entry) { entry.kept = keep.has(entry.index); });
+
+      function comparison(value, operator, target) {
+        if (operator === "<") return value < target;
+        if (operator === "<=") return value <= target;
+        if (operator === ">") return value > target;
+        if (operator === ">=") return value >= target;
+        return value === target;
       }
+
+      var modifierPattern = /(kh|kl|dh|dl|k|d)(\d*)|(min|max)(\d+)|(rr|r|xo|x)(\d*)(?:(<=|>=|=|<|>)(\d+))?/gi;
+      var modifier;
+      var consumed = "";
+      while ((modifier = modifierPattern.exec(modifiers))) {
+        consumed += modifier[0];
+        if (modifier[1]) {
+          var mode = modifier[1].toLowerCase();
+          if (mode === "k") mode = "kh";
+          if (mode === "d") mode = "dl";
+          var select = Math.max(1, Number(modifier[2] || 1));
+          var active = results.filter(function (entry) { return entry.kept; });
+          var ordered = active.slice().sort(function (a, b) { return a.result - b.result || a.index - b.index; });
+          var keep = new Set(active.map(function (entry) { return entry.index; }));
+          if (mode === "kh" || mode === "kl") {
+            keep.clear();
+            var kept = mode === "kh" ? ordered.slice(Math.max(0, ordered.length - select)) : ordered.slice(0, select);
+            kept.forEach(function (entry) { keep.add(entry.index); });
+          } else {
+            var dropped = mode === "dh" ? ordered.slice(Math.max(0, ordered.length - select)) : ordered.slice(0, select);
+            dropped.forEach(function (entry) { keep.delete(entry.index); });
+          }
+          results.forEach(function (entry) { if (entry.kept) entry.kept = keep.has(entry.index); });
+        } else if (modifier[3]) {
+          var boundary = Number(modifier[4]);
+          results.forEach(function (entry) {
+            if (!entry.kept) return;
+            entry.result = modifier[3].toLowerCase() === "min" ? Math.max(boundary, entry.result) : Math.min(boundary, entry.result);
+          });
+        } else if (modifier[5]) {
+          var rollMode = modifier[5].toLowerCase();
+          var digits = modifier[6];
+          var operator = modifier[7] || "=";
+          var target = modifier[8] ? Number(modifier[8]) : digits ? Number(digits) : (rollMode.charAt(0) === "x" ? sides : 1);
+          var cap = rollMode === "xo" ? 1 : rollMode.charAt(0) === "x" && modifier[8] && digits ? Math.max(1, Number(digits)) : 100;
+          if (rollMode === "r" || rollMode === "rr") {
+            results.slice().forEach(function (entry) {
+              if (!entry.kept || !comparison(entry.result, operator, target)) return;
+              entry.kept = false;
+              var rerolls = 0;
+              var next;
+              do {
+                next = { index: results.length, result: randomDie(sides), kept: true };
+                results.push(next);
+                rerolls += 1;
+                if (rollMode === "r" || !comparison(next.result, operator, target)) break;
+                next.kept = false;
+              } while (rerolls < 100 && results.length < 100);
+            });
+          } else {
+            var queue = results.filter(function (entry) { return entry.kept; });
+            var explosions = 0;
+            while (queue.length && explosions < cap && results.length < 100) {
+              var current = queue.shift();
+              if (!comparison(current.result, operator, target)) continue;
+              var extra = { index: results.length, result: randomDie(sides), kept: true };
+              results.push(extra);
+              explosions += 1;
+              if (rollMode === "x") queue.push(extra);
+            }
+          }
+        }
+      }
+      if (consumed.length !== modifiers.length) throw new Error("modifier");
       results.forEach(function (entry) { rolledDice.push({ sides: sides, result: entry.result, kept: entry.kept }); });
       diceDetails.push(source + " [" + results.map(function (entry) { return entry.kept ? String(entry.result) : "(" + entry.result + ")"; }).join(", ") + "]");
       return results.filter(function (entry) { return entry.kept; }).reduce(function (sum, entry) { return sum + entry.result; }, 0);
@@ -1394,7 +1500,7 @@
   }
 
   function diceNotationGroups(formula) {
-    var source = String(formula || "").toLowerCase();
+    var source = String(formula || "").toLowerCase().replace(/\((\d+)\)d(\d+)/g, "$1d$2");
     var pattern = /(\d*)d(\d+)(?:(?:kh|kl|dh|dl)\d+)?/g;
     var groups = [];
     var match;
@@ -1412,6 +1518,16 @@
   var diceBoxPromise = null;
   var diceBoxInstance = null;
   var physicalDiceDisabled = false;
+  var physicalDiceRetryTimer = 0;
+
+  function pausePhysicalDice() {
+    physicalDiceDisabled = true;
+    window.clearTimeout(physicalDiceRetryTimer);
+    physicalDiceRetryTimer = window.setTimeout(function () {
+      physicalDiceDisabled = false;
+      diceBoxPromise = null;
+    }, 45000);
+  }
 
   function resolveWithin(promise, milliseconds) {
     return Promise.race([
@@ -1466,17 +1582,17 @@
   async function rollPhysicalDice(formula) {
     var groups = diceNotationGroups(formula);
     if (!groups.length || physicalDiceDisabled) return null;
-    var box = await resolveWithin(getDiceBox(), 3000);
+    var box = await resolveWithin(getDiceBox(), 6000);
     if (!box) {
-      physicalDiceDisabled = true;
+      pausePhysicalDice();
       return null;
     }
     var layer = physicalDiceLayer();
     layer.classList.add("active");
     try {
-      var results = await resolveWithin(box.roll(groups, { theme: "default", themeColor: "#7faed2" }), 3500);
+      var results = await resolveWithin(box.roll(groups, { theme: "default", themeColor: "#7faed2" }), 7500);
       if (!results) {
-        physicalDiceDisabled = true;
+        pausePhysicalDice();
         try { box.clear(); } catch { /* The layer is hidden below even if the renderer stopped responding. */ }
         return null;
       }
@@ -1489,7 +1605,7 @@
       return supplied.length === groups.reduce(function (sum, group) { return sum + group.qty; }, 0) ? supplied : null;
     } catch (error) {
       console.warn("Pocket Chronicle used its lightweight dice fallback.", error);
-      physicalDiceDisabled = true;
+      pausePhysicalDice();
       return null;
     } finally {
       layer.classList.remove("active");
@@ -1533,8 +1649,17 @@
       showToast("That roll formula is not available on this phone yet.", 4200);
       return null;
     }
+    var roll = makeLocalRoll(label, formula, kind, result, triedPhysics && !suppliedDice);
+    writeLocalRoll(roll);
+    showRollResult(roll, Boolean(suppliedDice));
+    mirrorRollToDiceSoNice(roll);
+    if (state.tab === "chat") renderChat();
+    return roll;
+  }
+
+  function makeLocalRoll(label, formula, kind, result, animationFallback) {
     var actor = state.snapshot && state.snapshot.actor;
-    var roll = {
+    return {
       id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
       campaignId: state.snapshot && state.snapshot.campaign.id,
       actorUuid: actor && actor.uuid,
@@ -1545,19 +1670,53 @@
       total: result.total,
       breakdown: result.breakdown,
       dice: result.dice,
-      animationFallback: triedPhysics && !suppliedDice,
+      animationFallback: Boolean(animationFallback),
       timestamp: Date.now()
     };
-    writeLocalRoll(roll);
-    showRollResult(roll, Boolean(suppliedDice));
-    mirrorRollToDiceSoNice(roll);
-    if (state.tab === "chat") renderChat();
-    return roll;
   }
 
   function mirrorRollToDiceSoNice(roll) {
-    if (!roll.dice || !roll.dice.length) return;
-    void sendAction("showDice", { dice: roll.dice }, "", { quiet: true, silentOffline: true, skipRefresh: true });
+    mirrorDiceToDiceSoNice(roll.dice || []);
+  }
+
+  function mirrorDiceToDiceSoNice(dice) {
+    if (!dice.length) return;
+    void sendAction("showDice", { dice: dice }, "", { quiet: true, silentOffline: true, skipRefresh: true });
+  }
+
+  async function rollActivitySequence(label, entries) {
+    var prepared = (entries || []).map(function (entry) {
+      return { entry: entry, test: evaluateLocalFormula(entry.formula) };
+    }).filter(function (row) { return row.test; });
+    if (!prepared.length) {
+      showToast("This activity does not have a usable phone roll formula. Its Foundry automation is still shown in the activity details.", 5200);
+      return [];
+    }
+    var combinedFormula = prepared.map(function (row) { return "(" + row.entry.formula + ")"; }).join("+");
+    var groups = diceNotationGroups(combinedFormula);
+    var suppliedDice = null;
+    var triedPhysics = groups.length > 0 && !physicalDiceDisabled;
+    if (triedPhysics) {
+      showRollPreparing(label);
+      suppliedDice = await rollPhysicalDice(combinedFormula);
+    }
+    var suppliedPosition = 0;
+    var rolls = [];
+    prepared.forEach(function (row) {
+      var diceCount = diceNotationGroups(row.entry.formula).reduce(function (sum, group) { return sum + group.qty; }, 0);
+      var supplied = suppliedDice ? suppliedDice.slice(suppliedPosition, suppliedPosition + diceCount) : null;
+      suppliedPosition += diceCount;
+      var result = supplied ? evaluateLocalFormula(row.entry.formula, supplied) : row.test;
+      if (!result) return;
+      var roll = makeLocalRoll(label + " · " + row.entry.label, row.entry.formula, row.entry.kind || "item", result, triedPhysics && !suppliedDice);
+      writeLocalRoll(roll);
+      rolls.push(roll);
+    });
+    if (!rolls.length) return [];
+    showActivityRollResult(label, rolls, Boolean(suppliedDice));
+    mirrorDiceToDiceSoNice(rolls.flatMap(function (roll) { return roll.dice || []; }));
+    if (state.tab === "chat") renderChat();
+    return rolls;
   }
 
   function readLocalRolls() {
@@ -1622,6 +1781,47 @@
     rollCloseTimer = window.setTimeout(close, 4300);
   }
 
+  function showActivityRollResult(label, rolls, usedPhysics) {
+    var old = document.getElementById("roll-result-overlay");
+    if (old) old.remove();
+    window.clearTimeout(rollCloseTimer);
+    var overlay = create("div", "roll-overlay" + (usedPhysics ? "" : " rolling"));
+    overlay.id = "roll-result-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", label + " results");
+    var scrim = create("button", "roll-scrim");
+    scrim.type = "button";
+    scrim.setAttribute("aria-label", "Close roll results");
+    var card = create("section", "roll-result-card activity-roll-result-card");
+    card.appendChild(create("p", "eyebrow", "Attack sequence"));
+    card.appendChild(create("h2", "", label));
+    var resultList = create("div", "sequence-results");
+    rolls.forEach(function (roll) {
+      var row = create("section", "sequence-result " + (roll.kind || "item"));
+      var copy = create("span", "");
+      copy.appendChild(create("strong", "", roll.label.split(" · ").slice(-1)[0]));
+      copy.appendChild(create("small", "", roll.formula));
+      row.appendChild(copy);
+      row.appendChild(create("b", "", String(roll.total)));
+      resultList.appendChild(row);
+    });
+    card.appendChild(resultList);
+    card.appendChild(create("small", "roll-result-note", rolls.some(function (roll) { return roll.animationFallback; })
+      ? "Quick result used because 3D dice took too long"
+      : "Attack and damage were saved to this phone's roll history"));
+    overlay.appendChild(scrim);
+    overlay.appendChild(card);
+    function close() {
+      overlay.classList.add("closing");
+      window.setTimeout(function () { overlay.remove(); }, 180);
+    }
+    scrim.addEventListener("click", close);
+    card.addEventListener("click", close);
+    document.body.appendChild(overlay);
+    window.setTimeout(function () { overlay.classList.remove("rolling"); }, 720);
+    rollCloseTimer = window.setTimeout(close, 5600);
+  }
+
   function openItemDetails(uuid) {
     var actor = state.snapshot && state.snapshot.actor;
     var item = actor && (actor.actions || []).find(function (entry) { return entry.uuid === uuid; });
@@ -1659,6 +1859,11 @@
       }
       if (facts.childNodes.length) card.appendChild(facts);
       if (activity.description) card.appendChild(create("p", "activity-description", activity.description));
+      if ((activity.effects || []).length) {
+        var effectBadges = create("div", "activity-effects");
+        (activity.effects || []).forEach(function (effect) { effectBadges.appendChild(create("span", "", "◈ " + effect.name)); });
+        card.appendChild(effectBadges);
+      }
       if (activity.automation && (activity.automation.providers || []).length) {
         var automation = create("div", "automation-note");
         var badges = create("span", "automation-badges");
@@ -1706,7 +1911,24 @@
           });
           activityActions.appendChild(costs);
         }
-        (levelData && levelData.rolls || []).forEach(function (roll) {
+        var selectedRolls = levelData && levelData.rolls || [];
+        var attackRoll = selectedRolls.find(function (roll) { return roll.kind === "attack"; });
+        var followupRolls = selectedRolls.filter(function (roll) { return roll.kind === "damage" || roll.kind === "healing"; });
+        var combinedKeys = new Set();
+        if (attackRoll) {
+          var sequence = [attackRoll].concat(followupRolls);
+          sequence.forEach(function (roll) { combinedKeys.add(roll.key); });
+          var combined = create("button", "primary-button full-button activity-combined-roll");
+          combined.type = "button";
+          combined.appendChild(document.createTextNode(followupRolls.length ? "Roll attack + damage" : "Roll attack"));
+          combined.appendChild(create("small", "", sequence.map(function (roll) { return roll.formula; }).join("  ·  ")));
+          combined.addEventListener("click", function () {
+            closeSettings();
+            rollActivitySequence(item.name + " · " + activity.name, sequence);
+          });
+          activityActions.appendChild(combined);
+        }
+        selectedRolls.filter(function (roll) { return !combinedKeys.has(roll.key); }).forEach(function (roll) {
           var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
           rollButton.type = "button";
           rollButton.addEventListener("click", function () {
@@ -1811,5 +2033,9 @@
     if (className) node.className = className;
     if (text !== undefined && text !== null) node.textContent = text;
     return node;
+  }
+
+  if (window.__POCKET_TEST_MODE__) {
+    window.__POCKET_TEST__ = { evaluateLocalFormula: evaluateLocalFormula, diceNotationGroups: diceNotationGroups };
   }
 })();

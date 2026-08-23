@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { webcrypto } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 
 async function requestWorker(request) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -47,7 +49,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0110.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0120.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -74,13 +76,14 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=21"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=22"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=9/);
-  assert.match(mobile, /mobile\.css\?v=9/);
+  assert.match(mobile, /mobile\.js\?v=10/);
+  assert.match(mobile, /mobile\.css\?v=10/);
   assert.match(mobile, /data-tab="spells"/);
+  assert.match(mobile, /data-tab="effects"/);
   assert.match(mobile, /Foundry companion/i);
   assert.doesNotMatch(mobile, /butterfly/i);
   assert.match(mobileScript, /\/api\/campaign\/connect/);
@@ -103,6 +106,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /rollPhysicalDice/);
   assert.match(mobileScript, /resolveWithin/);
   assert.match(mobileScript, /physicalDiceDisabled/);
+  assert.match(mobileScript, /pausePhysicalDice/);
   assert.match(mobileScript, /Quick result used because 3D dice took too long/);
   assert.match(mobileScript, /await rollLocalFormula\("Death saving throw"/);
   assert.match(mobileScript, /consumptionByOption/);
@@ -110,6 +114,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /\["action", "Actions"\], \["feat", "Feats"\], \["item", "Items"\]/);
   assert.match(mobileScript, /parseExpression/);
   assert.match(mobileScript, /renderSpells/);
+  assert.match(mobileScript, /renderEffects/);
+  assert.match(mobileScript, /rollActivitySequence/);
+  assert.match(mobileScript, /Roll attack \+ damage/);
   assert.match(mobileScript, /Spell slots/);
   assert.match(mobileScript, /Saving throws/);
   assert.match(mobileScript, /sheet-category/);
@@ -148,6 +155,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /itemActivityData/);
   assert.match(bridge, /getDamageConfig/);
   assert.match(bridge, /getAttackData/);
+  assert.match(bridge, /scalingIncrease/);
+  assert.match(bridge, /actorEffectData/);
+  assert.doesNotMatch(bridge, /item\.clone\(/);
+  assert.doesNotMatch(bridge, /prepareFinalAttributes/);
   assert.match(bridge, /activityId/);
   assert.match(bridge, /slotKey/);
   assert.doesNotMatch(bridge, /actor\.applyDamage/);
@@ -161,8 +172,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(bridge, /Check Requests \/ Resets/);
   assert.match(bridge, /Approve Reset/);
-  assert.match(compatibilityLoader, /bridge-v0110\.js/);
-  assert.match(moduleManifest, /bridge-v0110\.js/);
+  assert.match(compatibilityLoader, /bridge-v0120\.js/);
+  assert.match(moduleManifest, /bridge-v0120\.js/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);
@@ -176,6 +187,36 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(accessMigration, /pairing_password_hash/);
   assert.match(worker, /request\.method === "OPTIONS"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+});
+
+test("understands Foundry D&D5e roll formulas used by synchronized activities", async () => {
+  const source = await readFile(new URL("../public/mobile.js", import.meta.url), "utf8");
+  const storage = new Map();
+  const context = {
+    console,
+    crypto: webcrypto,
+    navigator: { userAgent: "test" },
+    setTimeout,
+    clearTimeout,
+    localStorage: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key),
+    },
+    document: { addEventListener() {} },
+    __POCKET_TEST_MODE__: true,
+  };
+  context.window = context;
+  vm.runInNewContext(source, context);
+  const evaluate = context.__POCKET_TEST__.evaluateLocalFormula;
+  const healing = evaluate("(4)d4");
+  assert.equal(healing.dice.length, 4);
+  assert.ok(healing.total >= 4 && healing.total <= 16);
+  const exploding = evaluate("1d8x5=8++1d10", [{ sides: 8, result: 8 }, { sides: 10, result: 6 }]);
+  assert.ok(exploding);
+  assert.ok(exploding.dice.length >= 3);
+  assert.ok(evaluate("floor(10/2)").total === 5);
+  assert.ok(evaluate("1d20+(5+4+2)"));
 });
 
 test("allows authenticated bridge traffic from any HTTPS Foundry server", async () => {

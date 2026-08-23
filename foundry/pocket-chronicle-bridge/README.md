@@ -18,7 +18,9 @@ If a player forgets that separate password, they can tap **Forgot or reset this 
 
 The bridge does not depend on the Scene canvas. Phone requests, approvals, character data, journals, chat, and actions continue to work when the canvas is disabled.
 
-Version 0.11 exports the full modern D&D 5e activity and item surface, including activity uses, item uses, native consumption targets, spell slots, and local formulas. It uses D&D 5e's native activity-consumption path without launching Midi-QOL, CPR, or CAT target workflows. Ability, skill, save, initiative, attack, damage, death-save, and loose-die rolls remain local to the signed-in player's phone; Dice So Nice may mirror the exact result in Foundry without a chat card. Phone HP edits update temporary/current HP directly and do not initiate Midi-QOL concentration checks.
+Version 0.12 exports the full modern D&D 5e activity and item surface, including active effects, activity uses, item uses, native consumption targets, spell slots, and level-specific local formulas. Attack activities provide their attack and attached damage/healing formulas as one phone sequence; leveled spells use the selected slot and cantrips use the system's prepared character-level scaling. It uses D&D 5e's native activity-consumption path without launching Midi-QOL, CPR, or CAT target workflows. Ability, skill, save, initiative, attack, damage, death-save, and loose-die rolls remain local to the signed-in player's phone; Dice So Nice may mirror the exact result in Foundry without a chat card. Phone HP edits update temporary/current HP directly and do not initiate Midi-QOL concentration checks.
+
+Unchanged snapshots keep their existing revision. This lets the phone poll quietly without rebuilding the current page or moving the player's scroll position every time the bridge checks in.
 
 Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
 

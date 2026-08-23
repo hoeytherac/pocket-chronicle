@@ -19,8 +19,11 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - portrait and identity details for species, background, class, subclass, alignment, size, and languages
 - character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
 - dedicated Spells tab grouped by cantrips and spell level, with jewel-like live slot meters and a selectable casting slot
+- dedicated Effects tab for the character's currently applied Foundry conditions, spell effects, and feature effects
 - separate Actions, Feats, and Items shelves with tap-to-read details and no character-sheet item limit
-- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, with lazy-loaded 3D physics dice, a hard mobile timeout, and an automatic quick-result fallback
+- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, including Foundry keep/drop, reroll, explode, minimum, and maximum modifiers
+- attack activities roll the attack and every attached damage/healing formula together, using the selected casting level and D&D 5e cantrip scaling
+- lazy-loaded 3D physics dice use a mobile timeout, an automatic quick-result fallback, and retry after a renderer cooldown instead of remaining stuck
 - separate positive-number controls for damage and healing, sent as one Foundry update
 - spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
 - chosen spell slots, activity uses, item uses, quantities, and linked native resources are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
@@ -33,6 +36,7 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - installable from Safari or Chrome using the phone's home-screen flow
 - no Scene canvas, map rendering, or Foundry desktop controls
 - locked connection screen whenever the paired Foundry module is offline
+- revision-aware background sync updates the visible sheet only when Foundry data actually changes, preserving the player's scroll position
 
 There is no unconnected demo mode. A player can enter the app only while an authenticated Pocket Chronicle module is active in Foundry.
 

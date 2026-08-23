@@ -1,3 +1,4 @@
+/* Pocket Chronicle Bridge v0.12.0 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -348,7 +349,9 @@ function resolvedRollFormula(formula, data, item) {
     .replace(/Math\.(floor|ceil|round|abs|min|max)/gi, "$1")
     .replace(/[−–—]/g, "-")
     .replace(/\s+/g, "")
-    .replace(/\+-/g, "-");
+    .replace(/\+-/g, "-")
+    .replace(/\+\+/g, "+")
+    .replace(/--/g, "+");
 }
 
 function extractDiceFormula(value, item) {
@@ -441,23 +444,22 @@ function activitySaveData(activity) {
 
 function activityRollsAtLevel(item, activity, castLevel) {
   const baseLevel = item.type === "spell" ? Math.max(0, Number(item.system?.level || 0)) : 0;
-  const scaling = item.type === "spell" ? Math.max(0, Number(castLevel || baseLevel) - baseLevel) : 0;
-  let rollItem = item;
-  let rollActivity = activity;
-  if (scaling > 0) {
-    try {
-      rollItem = item.clone({ "flags.dnd5e": { ...(item.flags?.dnd5e || {}), scaling } }, { keepId: true });
-      rollItem.prepareFinalAttributes?.();
-      rollActivity = rollItem.system?.activities?.get(activity.id || activity._id) || activity;
-    } catch (error) {
-      console.debug(`${MODULE_ID} | Could not clone ${item.name} for scaled phone rolls`, error);
-    }
-  }
+  const scaling = item.type === "spell"
+    ? baseLevel === 0
+      ? Math.max(0, Number(item.system?.scalingIncrease || 0))
+      : Math.max(0, Number(castLevel || baseLevel) - baseLevel)
+    : 0;
+  // D&D 5e's damage activity prepares upcast/cantrip formulas from this numeric
+  // scaling value. Avoid cloning and fully preparing an Item for every possible
+  // spell level: large high-level spellbooks can otherwise stall Foundry during sync.
+  const rollItem = item;
+  const rollActivity = activity;
   const rolls = [];
   const seen = new Set();
   const add = (label, formula, kind) => {
     const normalized = resolvedRollFormula(formula, null, rollItem);
-    if (!normalized || normalized.includes("@") || !/[0-9]/.test(normalized) || seen.has(`${kind}:${normalized}`)) return;
+    if (!normalized || /^\(?0\)?$/.test(normalized) || normalized.includes("@") || !/[0-9]/.test(normalized)
+      || seen.has(`${kind}:${normalized}`)) return;
     seen.add(`${kind}:${normalized}`);
     rolls.push({ key: `${rollActivity.id || rollActivity._id}-${kind}-${rolls.length + 1}`, label, formula: normalized, kind });
   };
@@ -616,6 +618,17 @@ function activityAutomation(item, activity) {
   };
 }
 
+function activityEffectData(activity) {
+  let effects = [];
+  try { effects = collectionValues(activity.applicableEffects); }
+  catch { /* Some contributed activity types do not expose applicableEffects. */ }
+  return effects.filter(Boolean).map((effect) => ({
+    id: String(effect.id || effect._id || ""),
+    name: String(effect.name || "Effect"),
+    image: assetUrl(effect.img),
+  }));
+}
+
 function itemActivityData(item, spellSlots) {
   return collectionValues(item.system?.activities).map((activity) => {
     const castOptions = activityCastOptions(item, activity, spellSlots);
@@ -631,6 +644,7 @@ function itemActivityData(item, spellSlots) {
       concentration: Boolean(activity.requiresConcentration),
       description: plainText(activity.description?.chatFlavor || ""),
       save: activitySaveData(activity),
+      effects: activityEffectData(activity),
       castOptions,
       rollsByLevel: levels.map((level) => ({ level, rolls: activityRollsAtLevel(item, activity, level) })),
       consumptionByOption: castOptions.map((option) => ({
@@ -713,6 +727,33 @@ function actorResourceTrackers(actor) {
     }
   }
   return trackers.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function actorEffectData(actor) {
+  let effects = [];
+  try { effects = collectionValues(actor.allApplicableEffects?.()); }
+  catch { /* Fall through to the prepared or embedded effects collections. */ }
+  if (!effects.length) effects = collectionValues(actor.appliedEffects);
+  if (!effects.length) effects = collectionValues(actor.effects);
+  const seen = new Set();
+  return effects.flatMap((effect) => {
+    const id = String(effect.uuid || effect.id || effect._id || "");
+    if (!id || seen.has(id) || effect.disabled || effect.isSuppressed || effect.suppressed) return [];
+    seen.add(id);
+    const statuses = collectionValues(effect.statuses).map((status) => localized(CONFIG.statusEffects?.find((entry) => entry.id === status)?.name, String(status)));
+    const remaining = Number(effect.duration?.remaining);
+    const duration = plainText(effect.duration?.label || (Number.isFinite(remaining) && remaining >= 0 ? `${Math.ceil(remaining)} remaining` : ""));
+    const parent = effect.parent && effect.parent.documentName === "Item" ? effect.parent.name : "";
+    return [{
+      id,
+      name: String(effect.name || "Effect"),
+      image: assetUrl(effect.img),
+      statuses,
+      duration,
+      source: String(parent || ""),
+      description: plainText(effect.description || effect.system?.description?.value || ""),
+    }];
+  }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function buildSnapshot(actor) {
@@ -803,6 +844,7 @@ async function buildSnapshot(actor) {
       saves,
       skills,
       resources: actorResourceTrackers(actor),
+      effects: actorEffectData(actor),
       spellSlots,
       actions: actionItems.map((item) => {
         const activities = itemActivityData(item, spellSlots);

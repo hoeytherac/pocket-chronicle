@@ -15,10 +15,21 @@ export async function POST(request: Request) {
   const now = Date.now();
   const db = getDb();
   const [existing] = await db
-    .select({ id: snapshots.id, revision: snapshots.revision })
+    .select({ id: snapshots.id, revision: snapshots.revision, payloadJson: snapshots.payloadJson })
     .from(snapshots)
     .where(and(eq(snapshots.campaignId, bridge.campaignId), eq(snapshots.actorUuid, snapshot.actor.uuid)))
     .limit(1);
+
+  const comparable = JSON.stringify({ ...snapshot, revision: 0, generatedAt: 0 });
+  if (existing) {
+    try {
+      const previous = JSON.parse(existing.payloadJson) as ChronicleSnapshot;
+      const previousComparable = JSON.stringify({ ...previous, revision: 0, generatedAt: 0 });
+      if (comparable === previousComparable) return Response.json({ ok: true, revision: existing.revision, unchanged: true });
+    } catch {
+      // Replace an unreadable stored snapshot with the bridge's current valid payload below.
+    }
+  }
 
   const revision = (existing?.revision || 0) + 1;
   const payloadJson = JSON.stringify({ ...snapshot, revision, generatedAt: now });

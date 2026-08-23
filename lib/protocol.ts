@@ -61,6 +61,15 @@ export interface ChronicleActor {
     itemUuid?: string;
     activityId?: string;
   }>;
+  effects?: Array<{
+    id: string;
+    name: string;
+    image?: string;
+    statuses?: string[];
+    duration?: string;
+    source?: string;
+    description?: string;
+  }>;
   spellSlots?: Array<{
     key: string;
     label: string;
@@ -100,6 +109,7 @@ export interface ChronicleActor {
         dc: number;
         onSuccess?: string;
       };
+      effects?: Array<{ id: string; name: string; image?: string }>;
       castOptions?: Array<{
         slotKey?: string;
         level: number;

@@ -1,2 +1,2 @@
 // Compatibility loader for older manifests. Current releases load the versioned bridge directly.
-import "./bridge-v0110.js";
+import "./bridge-v0120.js";
