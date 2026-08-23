@@ -395,7 +395,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .item-detail-subtitle { margin: 5px 0 18px; color: var(--blue); font-size: 13px; }
 .item-detail-copy { clear: both; color: var(--muted); line-height: 1.6; white-space: pre-wrap; }
 
-.hp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.hp-controls { padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 9px; align-items: end; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.hp-controls label { min-width: 0; }
+.hp-label { margin-bottom: 7px; display: block; color: #cbd7e3; font-size: 12px; font-weight: 700; }
+.hp-controls input { width: 100%; min-height: 47px; padding: 0 12px; border: 1px solid var(--line-bright); border-radius: 12px; background: #101720; color: var(--ink); font-size: 16px; }
+.hp-controls button { min-height: 47px; margin: 0; padding: 0 10px; border-radius: 12px; }
+.hp-help { grid-column: 1 / -1; color: var(--dim); font-size: 10px; line-height: 1.45; }
 .bio-form { margin-top: 18px; }
 .bio-form label { display: block; margin-bottom: 8px; color: #c9d3df; font-size: 13px; font-weight: 700; }
 
@@ -415,8 +420,11 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .dice-row button { min-height: 58px; border: 1px solid var(--line-bright); border-radius: 16px; background: var(--surface); color: var(--blue); font-family: Georgia, "Times New Roman", serif; font-size: 21px; }
 .message { padding: 12px 14px; }
 .message.mine { border-color: #506f8d; background: #192532; }
+.local-roll-message { position: relative; overflow: hidden; }
+.local-roll-message::before { width: 3px; position: absolute; inset: 0 auto 0 0; background: #779dbc; content: ""; }
 .message header { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
 .message p { margin: 7px 0 0; line-height: 1.45; white-space: pre-wrap; }
+.roll-breakdown-line { margin-top: 5px; display: block; color: var(--dim); font-size: 10px; }
 .roll-total { margin-top: 9px; display: inline-grid; min-width: 40px; height: 40px; place-items: center; border: 1px solid var(--line-bright); border-radius: 12px; color: var(--blue); font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
 .chat-form { margin-top: 14px; display: grid; grid-template-columns: 1fr 52px; gap: 9px; }
 .chat-form button { border: 1px solid #7899ba; border-radius: 16px; background: #4f6d8b; font-size: 22px; }
@@ -454,6 +462,24 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .sheet-panel strong { display: block; }
 .sheet-panel small { display: block; margin-top: 5px; color: var(--muted); }
 .sheet-action { width: 100%; min-height: 58px; margin-top: 9px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); color: #ccd9e7; text-align: left; font-weight: 700; }
+.item-detail-actions { clear: both; display: grid; gap: 8px; }
+.item-detail-actions button { margin: 0; }
+
+.roll-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 22px; }
+.roll-scrim { position: absolute; inset: 0; border: 0; background: rgba(3, 7, 12, .82); backdrop-filter: blur(8px); }
+.roll-result-card { width: min(100%, 390px); padding: 27px 22px 24px; position: relative; overflow: hidden; border: 1px solid #6486a8; border-radius: 28px; background: linear-gradient(160deg, #192431, #0d121a 66%); box-shadow: 0 28px 90px rgba(0, 0, 0, .68), inset 0 1px rgba(255,255,255,.05); text-align: center; transform: translateY(0) scale(1); transition: opacity .18s ease, transform .18s ease; }
+.roll-result-card::after { width: 210px; height: 210px; position: absolute; right: -105px; top: -110px; border: 1px solid rgba(137, 172, 204, .18); border-radius: 50%; box-shadow: 0 0 0 25px rgba(137, 172, 204, .03), 0 0 0 50px rgba(137, 172, 204, .02); content: ""; }
+.roll-result-card h2 { margin: 7px 0 17px; position: relative; z-index: 1; font-size: clamp(28px, 8vw, 39px); line-height: 1.05; }
+.dice-stage { min-height: 128px; position: relative; display: grid; place-items: center; }
+.local-die { width: 105px; height: 105px; position: absolute; display: grid; place-items: center; border: 2px solid #8fb0cf; border-radius: 30px; color: rgba(151, 190, 224, .38); font-size: 70px; line-height: 1; transform: rotate(45deg); box-shadow: inset 0 0 30px rgba(80, 125, 164, .22), 0 0 35px rgba(66, 109, 148, .16); }
+.roll-result-total { position: relative; z-index: 2; color: #f1f5f9; font-family: Georgia, "Times New Roman", serif; font-size: 72px; font-weight: 500; line-height: 1; text-shadow: 0 3px 18px rgba(0, 0, 0, .65); }
+.roll-result-breakdown { margin: 13px 0 6px; color: #b7c9da; font-size: 13px; }
+.roll-result-note { color: var(--dim); }
+.roll-overlay.rolling .local-die { animation: phone-die-tumble .72s cubic-bezier(.2,.8,.2,1); }
+.roll-overlay.rolling .roll-result-total { animation: phone-total-pop .72s ease both; }
+.roll-overlay.closing .roll-result-card { opacity: 0; transform: translateY(15px) scale(.96); }
+@keyframes phone-die-tumble { 0% { transform: rotate(-130deg) scale(.4); opacity: .2; } 55% { transform: rotate(74deg) scale(1.13); opacity: 1; } 100% { transform: rotate(45deg) scale(1); } }
+@keyframes phone-total-pop { 0%, 50% { opacity: 0; transform: scale(.68); } 78% { opacity: 1; transform: scale(1.12); } 100% { transform: scale(1); } }
 
 .toast { position: fixed; z-index: 30; left: 50%; bottom: max(86px, calc(env(safe-area-inset-bottom) + 78px)); width: min(calc(100% - 34px), 470px); padding: 13px 17px; transform: translateX(-50%); border: 1px solid var(--line-bright); border-radius: 16px; background: #202938; color: #e8eef5; box-shadow: 0 14px 36px rgba(0, 0, 0, .42); font-size: 13px; line-height: 1.4; text-align: center; }
 .no-script { position: fixed; inset: 20px; padding: 20px; background: var(--surface); color: var(--ink); }
@@ -468,6 +494,11 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .brand-mark { width: 44px; height: 44px; flex-basis: 44px; border-radius: 14px; }
   .gate-view { padding-top: 22px; }
   .gate-sigil { width: 60px; height: 60px; margin-bottom: 18px; border-radius: 19px; }
+}
+
+@media (max-width: 370px) {
+  .hp-controls { grid-template-columns: 1fr; }
+  .hp-help { grid-column: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

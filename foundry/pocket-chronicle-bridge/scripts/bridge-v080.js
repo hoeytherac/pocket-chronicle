@@ -319,6 +319,90 @@ function itemSubtitle(item) {
   return [localized(CONFIG.Item?.typeLabels?.[item.type], item.type), localized(CONFIG.DND5E?.abilityActivationTypes?.[activation], activation || "")].filter(Boolean).join(" · ");
 }
 
+function collectionValues(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value.values === "function") return Array.from(value.values());
+  if (typeof value[Symbol.iterator] === "function" && typeof value !== "string") return Array.from(value);
+  if (typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function preparedFormula(value, item) {
+  let formula = typeof value === "string" ? value : value?.formula || value?.label || "";
+  if (!formula && value && Number(value.number) && Number(value.denomination)) formula = `${value.number}d${value.denomination}`;
+  try {
+    formula = Roll.replaceFormulaData(String(formula), item.getRollData?.() || item.parent?.getRollData?.() || {}, { missing: "0" });
+  } catch { /* Fall back to the prepared label. */ }
+  return String(formula).replace(/[−–—]/g, "-");
+}
+
+function extractDiceFormula(value, item) {
+  const source = preparedFormula(value, item);
+  const match = source.match(/(?:\d*)d\d+(?:\s*[+-]\s*(?:(?:\d*)d\d+|\d+))*/i);
+  if (!match) return "";
+  return match[0].replace(/\s+/g, "").replace(/^d/i, "1d");
+}
+
+function attackFormula(value, item) {
+  const source = preparedFormula(value, item);
+  const dice = extractDiceFormula(source, item);
+  if (dice && /d20/i.test(dice)) return dice;
+  const modifier = source.match(/[+-]?\s*\d+/)?.[0]?.replace(/\s+/g, "");
+  if (modifier === undefined) return "";
+  const number = Number(modifier);
+  if (!Number.isFinite(number)) return "";
+  return `1d20${number > 0 ? `+${number}` : number < 0 ? number : ""}`;
+}
+
+function itemLocalRolls(item) {
+  const rolls = [];
+  const seen = new Set();
+  const add = (label, formula, kind) => {
+    if (!formula || seen.has(`${kind}:${formula}`)) return;
+    seen.add(`${kind}:${formula}`);
+    rolls.push({ key: `${kind}-${rolls.length + 1}`, label, formula, kind });
+  };
+
+  const activities = collectionValues(item.system?.activities);
+  const attackSources = [item.labels?.toHit, item.labels?.modifier];
+  for (const activity of activities) attackSources.push(activity.labels?.toHit, activity.labels?.modifier);
+  for (const source of attackSources) {
+    const formula = attackFormula(source, item);
+    if (formula) {
+      add("Attack", formula, "attack");
+      break;
+    }
+  }
+
+  const damageSources = [];
+  for (const damage of collectionValues(item.labels?.damages)) damageSources.push(damage);
+  for (const part of collectionValues(item.system?.damage?.parts)) damageSources.push(Array.isArray(part) ? { formula: part[0], type: part[1] } : part);
+  for (const activity of activities) {
+    for (const damage of collectionValues(activity.labels?.damage)) damageSources.push(damage);
+    for (const part of collectionValues(activity.damage?.parts)) damageSources.push(Array.isArray(part) ? { formula: part[0], type: part[1] } : part);
+  }
+  for (const damage of damageSources) {
+    const formula = extractDiceFormula(damage, item);
+    if (!formula) continue;
+    const sourceLabel = String(damage?.type || damage?.damageType || damage?.label || "");
+    const healing = /heal/i.test(sourceLabel);
+    const typeLabel = localized(CONFIG.DND5E?.damageTypes?.[damage?.type || damage?.damageType], "");
+    add(healing ? "Healing" : typeLabel ? `${typeLabel} damage` : "Damage", formula, healing ? "healing" : "damage");
+  }
+  return rolls.slice(0, 8);
+}
+
+function itemConsumesResources(item) {
+  if (item.type === "consumable") return true;
+  if (Number(item.system?.uses?.max || 0) > 0) return true;
+  if (item.type === "spell" && Number(item.system?.level || 0) > 0) return true;
+  return collectionValues(item.system?.activities).some((activity) => {
+    const consumption = activity.consumption || {};
+    return collectionValues(consumption.targets).length > 0 || Number(consumption.amount || 0) > 0;
+  });
+}
+
 async function buildSnapshot(actor) {
   const system = actor.system || {};
   const classes = actor.items.filter((item) => item.type === "class");
@@ -411,6 +495,8 @@ async function buildSnapshot(actor) {
         description: plainText(item.system?.description?.value || item.system?.description || ""),
         image: assetUrl(item.img),
         uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
+        rolls: itemLocalRolls(item),
+        canConsume: itemConsumesResources(item),
       })),
       owners: actorOwners(actor),
       biography: plainText(system.details?.biography?.value || system.details?.biography || ""),
@@ -454,7 +540,6 @@ async function executeAction(action) {
       speaker: ChatMessage.getSpeaker({ actor }),
       ...(actingUser ? { user: actingUser.id } : {}),
     };
-    const rollMessage = { data: messageData };
     const noDialog = { configure: false };
     let result = {};
     switch (action.kind) {
@@ -466,58 +551,51 @@ async function executeAction(action) {
         result = { value };
         break;
       }
-      case "useItem": {
+      case "useItem":
+      case "consumeItem": {
         const item = await fromUuid(action.payload.itemUuid);
         if (!item || item.parent?.uuid !== actor.uuid) throw new Error("That item does not belong to this character.");
-        const usage = await item.use?.({ event: { shiftKey: true } }, noDialog, rollMessage);
-        const hasActivities = Number(item.system?.activities?.size || item.system?.activities?.length || 0) > 0;
-        if (hasActivities && !usage) throw new Error(`${item.name} could not be used. Check its charges, spell slots, or required choices in Foundry.`);
-        result = { item: item.name };
+        const usage = await item.use?.(
+          { event: { shiftKey: true }, subsequentActions: false },
+          noDialog,
+          { create: false, data: messageData },
+        );
+        const hasActivities = collectionValues(item.system?.activities).length > 0;
+        if (hasActivities && !usage) throw new Error(`${item.name} could not spend its resource. Check its charges, spell slots, or required choices in Foundry.`);
+        result = { item: item.name, consumed: true };
         break;
       }
-      case "roll": {
-        const formula = /^\d+d\d+(?:\s*[+-]\s*\d+)?$/i.test(action.payload.formula) ? action.payload.formula : "1d20";
-        const roll = await new Roll(formula).evaluate();
-        await roll.toMessage(messageData);
-        result = { total: roll.total };
-        break;
-      }
-      case "rollAbility": {
-        const ability = String(action.payload.ability || "");
-        if (!(ability in (actor.system.abilities || {}))) throw new Error("That ability is unavailable.");
-        const rolls = await actor.rollAbilityCheck({ ability }, noDialog, rollMessage);
-        if (!rolls?.length) throw new Error("Foundry did not complete that ability check.");
-        result = { total: rolls[0].total };
-        break;
-      }
-      case "rollSkill": {
-        const skill = String(action.payload.skill || "");
-        if (!(skill in (actor.system.skills || {}))) throw new Error("That skill is unavailable.");
-        const rolls = await actor.rollSkill({ skill }, noDialog, rollMessage);
-        if (!rolls?.length) throw new Error("Foundry did not complete that skill check.");
-        result = { total: rolls[0].total };
-        break;
-      }
-      case "rollSave": {
-        const ability = String(action.payload.ability || "");
-        if (!(ability in (actor.system.abilities || {}))) throw new Error("That saving throw is unavailable.");
-        const rolls = await actor.rollSavingThrow({ ability }, noDialog, rollMessage);
-        if (!rolls?.length) throw new Error("Foundry did not complete that saving throw.");
-        result = { total: rolls[0].total };
-        break;
-      }
-      case "rollInitiative": {
-        const roll = actor.getInitiativeRoll?.();
-        if (!roll) throw new Error("Initiative is unavailable for this character.");
-        await roll.evaluate();
-        await roll.toMessage({ ...messageData, flavor: game.i18n.localize("DND5E.Initiative") });
-        result = { total: roll.total };
-        break;
-      }
-      case "rollDeathSave": {
-        const rolls = await actor.rollDeathSave({}, noDialog, rollMessage);
-        if (!rolls?.length) throw new Error("A death save is only available at 0 HP before three results are marked.");
-        result = { total: rolls[0].total };
+      case "roll":
+      case "rollAbility":
+      case "rollSkill":
+      case "rollSave":
+      case "rollInitiative":
+      case "rollDeathSave":
+        throw new Error("Refresh Pocket Chronicle to roll on the phone. Foundry did not create a GM-authored roll card.");
+      case "recordDeathSave": {
+        const total = Math.max(1, Math.min(20, Number(action.payload.total || 0)));
+        if (Number(actor.system.attributes.hp.value || 0) > 0) throw new Error("Death saves are only available at 0 HP.");
+        const death = actor.system.attributes.death || {};
+        let successes = Math.max(0, Math.min(3, Number(death.success || 0)));
+        let failures = Math.max(0, Math.min(3, Number(death.failure || 0)));
+        const update = {};
+        if (total === 20) {
+          successes = 0;
+          failures = 0;
+          update["system.attributes.hp.value"] = 1;
+        } else if (total >= 10) {
+          successes = Math.min(3, successes + 1);
+          if (successes >= 3) {
+            successes = 0;
+            failures = 0;
+          }
+        } else {
+          failures = Math.min(3, failures + (total === 1 ? 2 : 1));
+        }
+        update["system.attributes.death.success"] = successes;
+        update["system.attributes.death.failure"] = failures;
+        await actor.update(update);
+        result = { total, successes, failures, revived: total === 20 };
         break;
       }
       case "setInspiration": {

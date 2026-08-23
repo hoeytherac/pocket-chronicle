@@ -4,12 +4,14 @@ export type SubscriptionStatus = "personal" | "trialing" | "active" | "past_due"
 export type ChronicleActionKind =
   | "adjustHp"
   | "useItem"
+  | "consumeItem"
   | "roll"
   | "rollAbility"
   | "rollSkill"
   | "rollSave"
   | "rollInitiative"
   | "rollDeathSave"
+  | "recordDeathSave"
   | "setInspiration"
   | "chat"
   | "purchase"
@@ -58,6 +60,13 @@ export interface ChronicleActor {
     description?: string;
     image?: string;
     uses?: string;
+    rolls?: Array<{
+      key: string;
+      label: string;
+      formula: string;
+      kind: "attack" | "damage" | "healing" | "item";
+    }>;
+    canConsume?: boolean;
   }>;
   owners?: Array<{ userId: string; name: string }>;
   biography?: string;
@@ -121,12 +130,14 @@ export interface QueuedChronicleAction {
 export const allowedActionKinds = new Set<ChronicleActionKind>([
   "adjustHp",
   "useItem",
+  "consumeItem",
   "roll",
   "rollAbility",
   "rollSkill",
   "rollSave",
   "rollInitiative",
   "rollDeathSave",
+  "recordDeathSave",
   "setInspiration",
   "chat",
   "purchase",

@@ -3,6 +3,7 @@
 
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
+  var ROLL_STORAGE = "pocket-chronicle-local-rolls";
   var state = {
     tab: "home",
     snapshot: null,
@@ -673,9 +674,24 @@
     stats.appendChild(stat("Speed", String(actor.speed)));
     fragment.appendChild(stats);
 
-    var hp = create("div", "hp-controls");
-    hp.appendChild(actionButton("− 1 HP", "adjust-hp", "-1"));
-    hp.appendChild(actionButton("+ 1 HP", "adjust-hp", "1"));
+    var hp = create("form", "hp-controls");
+    hp.dataset.form = "hp-change";
+    var hpField = document.createElement("label");
+    hpField.appendChild(create("span", "hp-label", "Change hit points"));
+    var hpInput = document.createElement("input");
+    hpInput.id = "hp-change";
+    hpInput.name = "amount";
+    hpInput.type = "number";
+    hpInput.inputMode = "numeric";
+    hpInput.step = "1";
+    hpInput.min = "-999";
+    hpInput.max = "999";
+    hpInput.placeholder = "−10 damage or +15 healing";
+    hpInput.required = true;
+    hpField.appendChild(hpInput);
+    hp.appendChild(hpField);
+    hp.appendChild(submitButton("Apply HP"));
+    hp.appendChild(create("small", "hp-help", "Use a negative number for damage and a positive number for healing."));
     fragment.appendChild(hp);
 
     var quick = create("div", "character-quick-actions");
@@ -707,6 +723,8 @@
       button.type = "button";
       button.dataset.action = "roll-ability";
       button.dataset.value = ability.key;
+      button.dataset.label = ability.label + " check";
+      button.dataset.formula = d20Formula(ability.modifier);
       button.appendChild(create("span", "", ability.label));
       button.appendChild(create("strong", "", signed(ability.modifier)));
       button.appendChild(create("small", "", String(ability.score)));
@@ -721,6 +739,8 @@
       button.type = "button";
       button.dataset.action = "roll-save";
       button.dataset.value = save.key;
+      button.dataset.label = save.label + " saving throw";
+      button.dataset.formula = d20Formula(save.modifier);
       button.appendChild(create("span", save.proficient ? "proficiency-mark proficient" : "proficiency-mark", save.proficient ? "●" : "○"));
       button.appendChild(create("span", "save-name", save.label));
       button.appendChild(create("strong", "", signed(save.modifier)));
@@ -736,6 +756,8 @@
       button.type = "button";
       button.dataset.action = "roll-skill";
       button.dataset.value = skill.key;
+      button.dataset.label = skill.label;
+      button.dataset.formula = d20Formula(skill.modifier);
       button.appendChild(create("span", skill.proficiency > 0 ? "proficiency-mark proficient" : "proficiency-mark", skill.proficiency >= 2 ? "◆" : skill.proficiency > 0 ? "●" : "○"));
       var copy = document.createElement("span");
       copy.appendChild(create("strong", "", skill.label));
@@ -783,12 +805,24 @@
       info.appendChild(copy);
       info.appendChild(create("span", "item-chevron", "›"));
       row.appendChild(info);
-      var button = create("button", "", "Use");
-      button.type = "button";
-      button.dataset.action = "use-item";
-      button.dataset.value = item.uuid;
-      button.dataset.label = item.name;
-      row.appendChild(button);
+      var firstRoll = (item.rolls || [])[0];
+      var button;
+      if (item.canConsume) {
+        button = create("button", "", item.category === "spell" ? "Cast" : "Use");
+        button.type = "button";
+        button.dataset.action = "consume-item";
+        button.dataset.value = item.uuid;
+        button.dataset.label = item.name;
+        row.appendChild(button);
+      } else if (firstRoll) {
+        button = create("button", "", "Roll");
+        button.type = "button";
+        button.dataset.action = "local-item-roll";
+        button.dataset.label = item.name + " · " + firstRoll.label;
+        button.dataset.formula = firstRoll.formula;
+        button.dataset.kind = firstRoll.kind || "item";
+        row.appendChild(button);
+      }
       actions.appendChild(row);
     });
     if (!visibleItems.length) actions.appendChild(emptyState("No " + state.sheetCategory + " entries are available for this character."));
@@ -873,7 +907,7 @@
 
   function renderChat() {
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("At the table", "Chat & dice", "Roll and post directly to Foundry while the world is awake."));
+    fragment.appendChild(pageTitle("At the table", "Chat & dice", "Dice roll privately on this phone; messages still travel to the table."));
     var dice = create("div", "dice-row");
     [4, 6, 8, 10, 12, 20].forEach(function (sides) {
       var button = create("button", "", "d" + sides);
@@ -883,8 +917,25 @@
       dice.appendChild(button);
     });
     fragment.appendChild(dice);
-    fragment.appendChild(sectionHeading("Table messages", "Newest first"));
+    var localRolls = readLocalRolls();
+    fragment.appendChild(sectionHeading("Phone roll history", localRolls.length ? "Newest first" : "No rolls yet"));
     var messages = create("div", "message-list");
+    localRolls.forEach(function (roll) {
+      var card = create("article", "message mine local-roll-message");
+      var header = document.createElement("header");
+      header.appendChild(create("strong", "", roll.actorName || "Your character"));
+      header.appendChild(create("span", "", formatTime(roll.timestamp)));
+      card.appendChild(header);
+      card.appendChild(create("p", "", roll.label));
+      card.appendChild(create("small", "roll-breakdown-line", roll.formula + " · " + roll.breakdown));
+      card.appendChild(create("strong", "roll-total", String(roll.total)));
+      messages.appendChild(card);
+    });
+    if (!localRolls.length) messages.appendChild(emptyState("Your local skill, attack, damage, and dice results will be kept here on this phone."));
+    fragment.appendChild(messages);
+
+    fragment.appendChild(sectionHeading("Foundry messages", "Newest first"));
+    var tableMessages = create("div", "message-list");
     state.snapshot.messages.forEach(function (message) {
       var card = create("article", "message");
       var header = document.createElement("header");
@@ -893,10 +944,10 @@
       card.appendChild(header);
       card.appendChild(create("p", "", message.content));
       if (message.rollTotal !== undefined && message.rollTotal !== null) card.appendChild(create("strong", "roll-total", String(message.rollTotal)));
-      messages.appendChild(card);
+      tableMessages.appendChild(card);
     });
-    if (!state.snapshot.messages.length) messages.appendChild(emptyState("No table messages yet."));
-    fragment.appendChild(messages);
+    if (!state.snapshot.messages.length) tableMessages.appendChild(emptyState("No table messages yet."));
+    fragment.appendChild(tableMessages);
     var form = create("form", "chat-form");
     form.dataset.form = "chat";
     var input = document.createElement("input");
@@ -990,24 +1041,25 @@
     } else if (action === "journal-back") {
       state.selectedJournal = null;
       renderJournal();
-    } else if (action === "adjust-hp") {
-      sendAction("adjustHp", { amount: Number(button.dataset.value) }, "Hit points updated in Foundry.");
     } else if (action === "roll-formula") {
-      sendAction("roll", { formula: button.dataset.value }, button.dataset.value + " rolled in Foundry.");
+      rollLocalFormula(button.dataset.value, button.dataset.value, "die");
     } else if (action === "roll-ability") {
-      sendAction("rollAbility", { ability: button.dataset.value }, "Ability check rolled as your player account.");
+      rollLocalFormula(button.dataset.label, button.dataset.formula, "ability");
     } else if (action === "roll-save") {
-      sendAction("rollSave", { ability: button.dataset.value }, "Saving throw rolled as your player account.");
+      rollLocalFormula(button.dataset.label, button.dataset.formula, "save");
     } else if (action === "roll-skill") {
-      sendAction("rollSkill", { skill: button.dataset.value }, "Skill check rolled as your player account.");
+      rollLocalFormula(button.dataset.label, button.dataset.formula, "skill");
     } else if (action === "roll-initiative") {
-      sendAction("rollInitiative", {}, "Initiative rolled as your player account.");
+      rollLocalFormula("Initiative", d20Formula(state.snapshot.actor.initiative || 0), "initiative");
     } else if (action === "roll-death-save") {
-      sendAction("rollDeathSave", {}, "Death saving throw completed in Foundry.");
+      var deathRoll = rollLocalFormula("Death saving throw", "1d20", "death-save");
+      if (deathRoll) sendAction("recordDeathSave", { total: deathRoll.total }, "Death save marked on your Foundry sheet.", { quiet: true });
     } else if (action === "toggle-inspiration") {
       sendAction("setInspiration", { value: button.dataset.value === "true" }, button.dataset.value === "true" ? "Inspiration marked in Foundry." : "Inspiration spent in Foundry.");
-    } else if (action === "use-item") {
-      sendAction("useItem", { itemUuid: button.dataset.value }, (button.dataset.label || "Item") + " completed in Foundry.");
+    } else if (action === "local-item-roll") {
+      rollLocalFormula(button.dataset.label, button.dataset.formula, button.dataset.kind || "item");
+    } else if (action === "consume-item") {
+      sendAction("consumeItem", { itemUuid: button.dataset.value }, (button.dataset.label || "Item") + " resources updated in Foundry.");
     } else if (action === "sheet-category") {
       state.sheetCategory = button.dataset.value || "action";
       renderCharacter();
@@ -1028,6 +1080,16 @@
       var content = input.value.trim();
       if (!content) return;
       sendAction("chat", { content: content }, "Message sent to the table.").then(function (ok) { if (ok) input.value = ""; });
+    } else if (form.dataset.form === "hp-change") {
+      var hpInput = form.querySelector("#hp-change");
+      var amount = Number(hpInput.value);
+      if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 999) {
+        showToast("Enter a whole number from −999 to 999. Use minus for damage or plus for healing.", 5200);
+        return;
+      }
+      sendAction("adjustHp", { amount: amount }, amount < 0 ? Math.abs(amount) + " damage applied in Foundry." : amount + " healing applied in Foundry.").then(function (ok) {
+        if (ok) hpInput.value = "";
+      });
     } else if (form.dataset.form === "biography") {
       var biography = form.querySelector("#biography").value;
       sendAction("updateBiography", { biography: biography }, "Biography update sent to Foundry.");
@@ -1040,10 +1102,11 @@
     loadState();
   }
 
-  async function sendAction(kind, payload, success) {
+  async function sendAction(kind, payload, success, options) {
+    options = options || {};
     if (!state.snapshot) return false;
     if (!state.bridgeOnline) {
-      showToast("Foundry is sleeping. Saved sheets and journals still work; rolls and edits resume when the GM opens the world.", 5600);
+      showToast(options.quiet ? "The roll stays in your phone history, but Foundry is asleep so the sheet could not be updated." : "Foundry is sleeping. Saved sheets and journals still work; sheet edits resume when the GM opens the world.", 5600);
       return false;
     }
     var result = await post("/api/actions", {
@@ -1059,7 +1122,7 @@
       showToast(result.data.error || "Foundry could not receive that action yet.", 5000);
       return false;
     }
-    showToast("Waiting for Foundry to finish…", 14000);
+    if (!options.quiet) showToast("Waiting for Foundry to finish…", 14000);
     var actionId = result.data.id;
     for (var attempt = 0; attempt < 12; attempt += 1) {
       await delay(750);
@@ -1069,7 +1132,7 @@
         continue;
       }
       if (status.data.status === "completed") {
-        showToast(success, 3400);
+        if (!options.quiet) showToast(success, 3400);
         window.setTimeout(function () { loadState(true); }, 600);
         return true;
       }
@@ -1078,13 +1141,134 @@
         return false;
       }
     }
-    showToast("The action is queued, but Foundry is taking longer than expected. Check the table before trying it again.", 6500);
+    if (!options.quiet) showToast("The action is queued, but Foundry is taking longer than expected. Check the table before trying it again.", 6500);
     window.setTimeout(function () { loadState(true); }, 1200);
     return true;
   }
 
   function delay(milliseconds) {
     return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+  }
+
+  function d20Formula(modifier) {
+    var value = Number(modifier) || 0;
+    return "1d20" + (value > 0 ? "+" + value : value < 0 ? String(value) : "");
+  }
+
+  function randomDie(sides) {
+    if (window.crypto && window.crypto.getRandomValues) {
+      var numbers = new Uint32Array(1);
+      var ceiling = Math.floor(4294967296 / sides) * sides;
+      do { window.crypto.getRandomValues(numbers); } while (numbers[0] >= ceiling);
+      return (numbers[0] % sides) + 1;
+    }
+    return Math.floor(Math.random() * sides) + 1;
+  }
+
+  function evaluateLocalFormula(formula) {
+    var normalized = String(formula || "").toLowerCase().replace(/[−–—]/g, "-").replace(/\s+/g, "");
+    if (!normalized || !/^[+-]?(?:\d*d\d+|\d+)(?:[+-](?:\d*d\d+|\d+))*$/i.test(normalized)) return null;
+    var terms = normalized.match(/[+-]?(?:\d*d\d+|\d+)/gi) || [];
+    var total = 0;
+    var details = [];
+    for (var index = 0; index < terms.length; index += 1) {
+      var term = terms[index];
+      var sign = term.charAt(0) === "-" ? -1 : 1;
+      var unsigned = term.replace(/^[+-]/, "");
+      if (unsigned.indexOf("d") >= 0) {
+        var parts = unsigned.split("d");
+        var count = Number(parts[0] || 1);
+        var sides = Number(parts[1]);
+        if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) return null;
+        var dice = [];
+        for (var die = 0; die < count; die += 1) dice.push(randomDie(sides));
+        var subtotal = dice.reduce(function (sum, value) { return sum + value; }, 0);
+        total += sign * subtotal;
+        details.push((sign < 0 ? "−" : details.length ? "+" : "") + "[" + dice.join(", ") + "]");
+      } else {
+        var constant = Number(unsigned);
+        if (!Number.isFinite(constant)) return null;
+        total += sign * constant;
+        details.push((sign < 0 ? "−" : "+") + constant);
+      }
+    }
+    return { total: total, breakdown: details.join(" ").replace(/^\+/, "") };
+  }
+
+  function rollLocalFormula(label, formula, kind) {
+    var result = evaluateLocalFormula(formula);
+    if (!result) {
+      showToast("That roll formula is not available on this phone yet.", 4200);
+      return null;
+    }
+    var actor = state.snapshot && state.snapshot.actor;
+    var roll = {
+      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
+      campaignId: state.snapshot && state.snapshot.campaign.id,
+      actorUuid: actor && actor.uuid,
+      actorName: actor && actor.name,
+      label: label || formula,
+      formula: String(formula),
+      kind: kind || "roll",
+      total: result.total,
+      breakdown: result.breakdown,
+      timestamp: Date.now()
+    };
+    writeLocalRoll(roll);
+    showRollResult(roll);
+    if (state.tab === "chat") renderChat();
+    return roll;
+  }
+
+  function readLocalRolls() {
+    var all = [];
+    try { all = JSON.parse(window.localStorage.getItem(ROLL_STORAGE) || "[]"); } catch { all = []; }
+    if (!Array.isArray(all)) return [];
+    var campaignId = state.snapshot && state.snapshot.campaign.id;
+    var actorUuid = state.snapshot && state.snapshot.actor.uuid;
+    return all.filter(function (roll) { return roll.campaignId === campaignId && roll.actorUuid === actorUuid; }).slice(0, 50);
+  }
+
+  function writeLocalRoll(roll) {
+    var all = [];
+    try { all = JSON.parse(window.localStorage.getItem(ROLL_STORAGE) || "[]"); } catch { all = []; }
+    if (!Array.isArray(all)) all = [];
+    all.unshift(roll);
+    try { window.localStorage.setItem(ROLL_STORAGE, JSON.stringify(all.slice(0, 200))); } catch { /* Phone storage can be private or full. */ }
+  }
+
+  var rollCloseTimer = 0;
+  function showRollResult(roll) {
+    var old = document.getElementById("roll-result-overlay");
+    if (old) old.remove();
+    window.clearTimeout(rollCloseTimer);
+    var overlay = create("div", "roll-overlay rolling");
+    overlay.id = "roll-result-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", roll.label + ": " + roll.total);
+    var scrim = create("button", "roll-scrim");
+    scrim.type = "button";
+    scrim.setAttribute("aria-label", "Close roll result");
+    var card = create("section", "roll-result-card");
+    card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "attack" ? "Attack roll" : "Phone dice"));
+    card.appendChild(create("h2", "", roll.label));
+    var stage = create("div", "dice-stage");
+    stage.appendChild(create("span", "local-die", "◇"));
+    stage.appendChild(create("strong", "roll-result-total", String(roll.total)));
+    card.appendChild(stage);
+    card.appendChild(create("p", "roll-result-breakdown", roll.formula + "  ·  " + roll.breakdown));
+    card.appendChild(create("small", "roll-result-note", "Saved to this phone's roll history"));
+    overlay.appendChild(scrim);
+    overlay.appendChild(card);
+    function close() {
+      overlay.classList.add("closing");
+      window.setTimeout(function () { overlay.remove(); }, 180);
+    }
+    scrim.addEventListener("click", close);
+    card.addEventListener("click", close);
+    document.body.appendChild(overlay);
+    window.setTimeout(function () { overlay.classList.remove("rolling"); }, 720);
+    rollCloseTimer = window.setTimeout(close, 4300);
   }
 
   function openItemDetails(uuid) {
@@ -1102,13 +1286,26 @@
     panel.appendChild(create("p", "eyebrow", item.category || item.type));
     panel.appendChild(create("p", "item-detail-subtitle", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
     panel.appendChild(create("p", "item-detail-copy", item.description || "No additional item details were provided in Foundry."));
-    var use = create("button", "primary-button full-button", "Use " + item.name);
-    use.type = "button";
-    use.addEventListener("click", function () {
-      closeSettings();
-      sendAction("useItem", { itemUuid: item.uuid }, item.name + " completed in Foundry.");
+    var controls = create("div", "item-detail-actions");
+    (item.rolls || []).forEach(function (roll) {
+      var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
+      rollButton.type = "button";
+      rollButton.addEventListener("click", function () {
+        closeSettings();
+        rollLocalFormula(item.name + " · " + roll.label, roll.formula, roll.kind || "item");
+      });
+      controls.appendChild(rollButton);
     });
-    elements.modalContent.replaceChildren(panel, use);
+    if (item.canConsume) {
+      var use = create("button", "primary-button full-button", item.category === "spell" ? "Cast and spend resources" : "Use and spend resources");
+      use.type = "button";
+      use.addEventListener("click", function () {
+        closeSettings();
+        sendAction("consumeItem", { itemUuid: item.uuid }, item.name + " resources updated in Foundry.");
+      });
+      controls.appendChild(use);
+    }
+    elements.modalContent.replaceChildren(panel, controls);
     elements.modal.hidden = false;
   }
 
