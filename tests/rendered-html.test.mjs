@@ -74,11 +74,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=17"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=18"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=5/);
+  assert.match(mobile, /mobile\.js\?v=6/);
+  assert.match(mobile, /mobile\.css\?v=6/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /Foundry companion/i);
   assert.doesNotMatch(mobile, /butterfly/i);
@@ -89,7 +90,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /recordDeathSave/);
   assert.match(mobileScript, /rollLocalFormula/);
   assert.match(mobileScript, /Phone roll history/);
-  assert.match(mobileScript, /hp-change/);
+  assert.match(mobileScript, /hp-damage/);
+  assert.match(mobileScript, /hp-healing/);
+  assert.match(mobileScript, /hpChange = isDamage \? -amount : amount/);
   assert.match(mobileScript, /consumeItem/);
   assert.match(mobileScript, /showDice/);
   assert.match(mobileScript, /renderSpells/);

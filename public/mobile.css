@@ -396,11 +396,14 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .item-detail-subtitle { margin: 5px 0 18px; color: var(--blue); font-size: 13px; }
 .item-detail-copy { clear: both; color: var(--muted); line-height: 1.6; white-space: pre-wrap; }
 
-.hp-controls { padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 9px; align-items: end; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
-.hp-controls label { min-width: 0; }
+.hp-controls { padding: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.hp-action { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.hp-action label { min-width: 0; }
 .hp-label { margin-bottom: 7px; display: block; color: #cbd7e3; font-size: 12px; font-weight: 700; }
 .hp-controls input { width: 100%; min-height: 47px; padding: 0 12px; border: 1px solid var(--line-bright); border-radius: 12px; background: #101720; color: var(--ink); font-size: 16px; }
-.hp-controls button { min-height: 47px; margin: 0; padding: 0 10px; border-radius: 12px; }
+.hp-action button { width: 74px; min-height: 47px; margin: 0; padding: 0 10px; border-radius: 12px; }
+.hp-action-damage button { border-color: #8f5151; background: #3a2024; color: #f2d8d8; }
+.hp-action-healing button { border-color: #4c7d6b; background: #1c3931; color: #d6eee4; }
 .hp-help { grid-column: 1 / -1; color: var(--dim); font-size: 10px; line-height: 1.45; }
 .bio-form { margin-top: 18px; }
 .bio-form label { display: block; margin-bottom: 8px; color: #c9d3df; font-size: 13px; font-weight: 700; }
@@ -509,7 +512,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 
 @media (max-width: 370px) {
   .hp-controls { grid-template-columns: 1fr; }
-  .hp-help { grid-column: auto; }
+  .hp-help { grid-column: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

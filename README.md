@@ -21,7 +21,7 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - dedicated Spells tab grouped by cantrips and spell level, with live Foundry slot counts
 - separate Actions and Feats shelves with tap-to-read item details
 - local phone dice for abilities, skills, saves, initiative, attacks, damage, and death saves, with an animated result and device roll history
-- signed HP changes such as `-10` damage or `+15` healing sent as one Foundry update
+- separate positive-number controls for damage and healing, sent as one Foundry update
 - spell slots and limited-use charges still spent on the authoritative Foundry character sheet without a GM-authored roll card
 - optional Dice So Nice mirroring in Foundry, using its official no-chat API when the module is active
 - GM-shared journal entries and images

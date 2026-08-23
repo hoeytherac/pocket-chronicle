@@ -312,6 +312,28 @@
     return button;
   }
 
+  function hpActionForm(kind, labelText, buttonText, placeholder) {
+    var form = create("form", "hp-action hp-action-" + kind);
+    form.dataset.form = "hp-" + kind;
+    var field = document.createElement("label");
+    field.htmlFor = "hp-" + kind;
+    field.appendChild(create("span", "hp-label", labelText));
+    var input = document.createElement("input");
+    input.id = "hp-" + kind;
+    input.name = "amount";
+    input.type = "number";
+    input.inputMode = "numeric";
+    input.step = "1";
+    input.min = "1";
+    input.max = "999";
+    input.placeholder = placeholder;
+    input.required = true;
+    field.appendChild(input);
+    form.appendChild(field);
+    form.appendChild(submitButton(buttonText));
+    return form;
+  }
+
   function textButton(text, action) {
     var button = create("button", "text-button full-button", text);
     button.type = "button";
@@ -675,24 +697,10 @@
     stats.appendChild(stat("Speed", String(actor.speed)));
     fragment.appendChild(stats);
 
-    var hp = create("form", "hp-controls");
-    hp.dataset.form = "hp-change";
-    var hpField = document.createElement("label");
-    hpField.appendChild(create("span", "hp-label", "Change hit points"));
-    var hpInput = document.createElement("input");
-    hpInput.id = "hp-change";
-    hpInput.name = "amount";
-    hpInput.type = "number";
-    hpInput.inputMode = "numeric";
-    hpInput.step = "1";
-    hpInput.min = "-999";
-    hpInput.max = "999";
-    hpInput.placeholder = "−10 damage or +15 healing";
-    hpInput.required = true;
-    hpField.appendChild(hpInput);
-    hp.appendChild(hpField);
-    hp.appendChild(submitButton("Apply HP"));
-    hp.appendChild(create("small", "hp-help", "Use a negative number for damage and a positive number for healing."));
+    var hp = create("section", "hp-controls hp-split-controls");
+    hp.appendChild(hpActionForm("damage", "Damage taken", "Damage", "10"));
+    hp.appendChild(hpActionForm("healing", "Hit points healed", "Heal", "15"));
+    hp.appendChild(create("small", "hp-help", "Enter positive whole numbers only. Damage is subtracted and healing is added automatically."));
     fragment.appendChild(hp);
 
     var quick = create("div", "character-quick-actions");
@@ -1127,14 +1135,16 @@
       var content = input.value.trim();
       if (!content) return;
       sendAction("chat", { content: content }, "Message sent to the table.").then(function (ok) { if (ok) input.value = ""; });
-    } else if (form.dataset.form === "hp-change") {
-      var hpInput = form.querySelector("#hp-change");
+    } else if (form.dataset.form === "hp-damage" || form.dataset.form === "hp-healing") {
+      var hpInput = form.querySelector("input[name='amount']");
       var amount = Number(hpInput.value);
-      if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 999) {
-        showToast("Enter a whole number from −999 to 999. Use minus for damage or plus for healing.", 5200);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 999) {
+        showToast("Enter a positive whole number from 1 to 999.", 4200);
         return;
       }
-      sendAction("adjustHp", { amount: amount }, amount < 0 ? Math.abs(amount) + " damage applied in Foundry." : amount + " healing applied in Foundry.").then(function (ok) {
+      var isDamage = form.dataset.form === "hp-damage";
+      var hpChange = isDamage ? -amount : amount;
+      sendAction("adjustHp", { amount: hpChange }, amount + (isDamage ? " damage applied in Foundry." : " healing applied in Foundry.")).then(function (ok) {
         if (ok) hpInput.value = "";
       });
     } else if (form.dataset.form === "biography") {
