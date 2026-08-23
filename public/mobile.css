@@ -452,10 +452,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .empty-state { padding: 28px 18px; border: 1px dashed var(--line); border-radius: 18px; color: var(--muted); text-align: center; line-height: 1.5; }
 
 .bottom-nav {
-  flex: 0 0 auto;
-  min-height: 136px;
-  min-height: clamp(136px, 18dvh, 170px);
-  padding: 8px 5px max(14px, env(safe-area-inset-bottom));
+  flex: 0 0 calc(64px + env(safe-area-inset-bottom));
+  min-height: 64px;
+  min-height: calc(64px + env(safe-area-inset-bottom));
+  padding: 4px 3px max(6px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -464,10 +464,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: rgba(13, 17, 23, 0.98);
 }
 
-.bottom-nav button { min-width: 0; min-height: 0; height: 100%; padding: 7px 1px; position: relative; display: grid; align-content: center; border: 0; border-radius: 15px; background: transparent; color: var(--dim); isolation: isolate; }
-.bottom-nav button::before { height: 76px; position: absolute; left: 2px; right: 2px; top: 50%; z-index: -1; border: 1px solid transparent; border-radius: 16px; background: transparent; content: ""; opacity: 0; transform: translateY(-50%); transition: opacity .18s ease, border-color .18s ease, background .18s ease; }
-.bottom-nav button span { position: relative; z-index: 1; display: block; font-size: 23px; line-height: 1.1; }
-.bottom-nav button small { position: relative; z-index: 1; display: block; margin-top: 7px; font-size: 10px; font-weight: 750; }
+.bottom-nav button { min-width: 0; min-height: 0; height: 100%; max-height: 56px; padding: 4px 1px; position: relative; align-self: start; display: grid; align-content: center; border: 0; border-radius: 13px; background: transparent; color: var(--dim); isolation: isolate; }
+.bottom-nav button::before { position: absolute; inset: 0 1px; z-index: -1; border: 1px solid transparent; border-radius: 13px; background: transparent; content: ""; opacity: 0; transition: opacity .18s ease, border-color .18s ease, background .18s ease; }
+.bottom-nav button span { position: relative; z-index: 1; display: block; font-size: 19px; line-height: 1; }
+.bottom-nav button small { position: relative; z-index: 1; display: block; margin-top: 4px; font-size: 9px; font-weight: 750; line-height: 1; }
 .bottom-nav button.active { background: transparent; color: #c7daed; box-shadow: none; }
 .bottom-nav button.active::before { border-color: rgba(105, 142, 179, .38); background: linear-gradient(180deg, rgba(31, 46, 65, .9), rgba(22, 33, 48, .9)); box-shadow: inset 0 2px var(--blue-strong), 0 8px 22px rgba(0, 0, 0, .18); opacity: 1; }
 

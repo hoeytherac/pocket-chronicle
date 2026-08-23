@@ -77,12 +77,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=25"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=26"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=13/);
-  assert.match(mobile, /mobile\.css\?v=13/);
+  assert.match(mobile, /mobile\.js\?v=14/);
+  assert.match(mobile, /mobile\.css\?v=14/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="effects"/);
   assert.match(mobile, /Foundry companion/i);
@@ -111,6 +111,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /window\.setTimeout\(close, 30000\)/);
   assert.match(mobileStyle, /grid-template-columns: repeat\(7, 1fr\)/);
   assert.match(mobileStyle, /grid-template-rows: minmax\(0, 1fr\)/);
+  assert.match(mobileStyle, /flex: 0 0 calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.doesNotMatch(mobileStyle, /clamp\(136px, 18dvh, 170px\)/);
   assert.match(mobileStyle, /bottom-nav button::before/);
   assert.doesNotMatch(mobileStyle, /bottom-nav button:nth-child\(n \+ 5\)/);
   assert.match(mobileStyle, /roll-coin-reveal/);
@@ -182,7 +184,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.12\.4"/);
+  assert.match(moduleManifest, /"version": "0\.12\.5"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);
