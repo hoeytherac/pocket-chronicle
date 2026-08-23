@@ -843,8 +843,14 @@
     row.appendChild(info);
     var firstRoll = (item.rolls || [])[0];
     var button;
-    if (item.canConsume) {
-      button = create("button", "", item.category === "spell" ? "Cast" : "Use");
+    if ((item.activities || []).length) {
+      button = create("button", "", item.category === "spell" ? "Cast" : "Open");
+      button.type = "button";
+      button.dataset.action = "open-item";
+      button.dataset.value = item.uuid;
+      row.appendChild(button);
+    } else if (item.canConsume) {
+      button = create("button", "", "Use");
       button.type = "button";
       button.dataset.action = "consume-item";
       button.dataset.value = item.uuid;
@@ -1224,38 +1230,128 @@
   }
 
   function evaluateLocalFormula(formula) {
-    var normalized = String(formula || "").toLowerCase().replace(/[−–—]/g, "-").replace(/\s+/g, "");
-    if (!normalized || !/^[+-]?(?:\d*d\d+|\d+)(?:[+-](?:\d*d\d+|\d+))*$/i.test(normalized)) return null;
-    var terms = normalized.match(/[+-]?(?:\d*d\d+|\d+)/gi) || [];
-    var total = 0;
-    var details = [];
-    var rolledDice = [];
-    for (var index = 0; index < terms.length; index += 1) {
-      var term = terms[index];
-      var sign = term.charAt(0) === "-" ? -1 : 1;
-      var unsigned = term.replace(/^[+-]/, "");
-      if (unsigned.indexOf("d") >= 0) {
-        var parts = unsigned.split("d");
-        var count = Number(parts[0] || 1);
-        var sides = Number(parts[1]);
-        if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) return null;
-        var dice = [];
-        for (var die = 0; die < count; die += 1) {
-          var dieResult = randomDie(sides);
-          dice.push(dieResult);
-          rolledDice.push({ sides: sides, result: dieResult });
-        }
-        var subtotal = dice.reduce(function (sum, value) { return sum + value; }, 0);
-        total += sign * subtotal;
-        details.push((sign < 0 ? "−" : details.length ? "+" : "") + "[" + dice.join(", ") + "]");
-      } else {
-        var constant = Number(unsigned);
-        if (!Number.isFinite(constant)) return null;
-        total += sign * constant;
-        details.push((sign < 0 ? "−" : "+") + constant);
-      }
+    var normalized = String(formula || "").toLowerCase()
+      .replace(/\[[^\]]*]/g, "")
+      .replace(/math\.(floor|ceil|round|abs|min|max)/g, "$1")
+      .replace(/[−–—]/g, "-")
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .replace(/\s+/g, "");
+    if (!normalized || normalized.length > 500) return null;
+    var tokens = [];
+    var cursor = 0;
+    while (cursor < normalized.length) {
+      var remaining = normalized.slice(cursor);
+      var diceMatch = remaining.match(/^\d*d\d+(?:(?:kh|kl|dh|dl)\d+)?/i);
+      var numberMatch = remaining.match(/^\d+(?:\.\d+)?/);
+      var nameMatch = remaining.match(/^[a-z]+/i);
+      if (diceMatch) {
+        tokens.push({ type: "dice", value: diceMatch[0] });
+        cursor += diceMatch[0].length;
+      } else if (numberMatch) {
+        tokens.push({ type: "number", value: numberMatch[0] });
+        cursor += numberMatch[0].length;
+      } else if (nameMatch) {
+        tokens.push({ type: "name", value: nameMatch[0] });
+        cursor += nameMatch[0].length;
+      } else if ("+-*/(),".indexOf(remaining.charAt(0)) >= 0) {
+        tokens.push({ type: remaining.charAt(0), value: remaining.charAt(0) });
+        cursor += 1;
+      } else return null;
     }
-    return { total: total, breakdown: details.join(" ").replace(/^\+/, ""), dice: rolledDice };
+
+    var rolledDice = [];
+    var diceDetails = [];
+    var position = 0;
+
+    function peek(type) { return tokens[position] && tokens[position].type === type; }
+    function take(type) {
+      if (!peek(type)) return null;
+      position += 1;
+      return tokens[position - 1];
+    }
+
+    function rollDiceToken(source) {
+      var match = source.match(/^(\d*)d(\d+)(?:(kh|kl|dh|dl)(\d+))?$/i);
+      if (!match) throw new Error("dice");
+      var count = Number(match[1] || 1);
+      var sides = Number(match[2]);
+      var mode = match[3] || "";
+      var select = Number(match[4] || 0);
+      if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) throw new Error("dice");
+      var results = [];
+      for (var die = 0; die < count; die += 1) results.push({ index: die, result: randomDie(sides), kept: true });
+      if (mode) {
+        var ordered = results.slice().sort(function (a, b) { return a.result - b.result || a.index - b.index; });
+        var keep = new Set();
+        if (mode === "kh") ordered.slice(Math.max(0, ordered.length - select)).forEach(function (entry) { keep.add(entry.index); });
+        else if (mode === "kl") ordered.slice(0, select).forEach(function (entry) { keep.add(entry.index); });
+        else if (mode === "dh") ordered.slice(0, Math.max(0, ordered.length - select)).forEach(function (entry) { keep.add(entry.index); });
+        else if (mode === "dl") ordered.slice(Math.min(select, ordered.length)).forEach(function (entry) { keep.add(entry.index); });
+        results.forEach(function (entry) { entry.kept = keep.has(entry.index); });
+      }
+      results.forEach(function (entry) { rolledDice.push({ sides: sides, result: entry.result, kept: entry.kept }); });
+      diceDetails.push(source + " [" + results.map(function (entry) { return entry.kept ? String(entry.result) : "(" + entry.result + ")"; }).join(", ") + "]");
+      return results.filter(function (entry) { return entry.kept; }).reduce(function (sum, entry) { return sum + entry.result; }, 0);
+    }
+
+    function parsePrimary() {
+      var token;
+      if ((token = take("number"))) return Number(token.value);
+      if ((token = take("dice"))) return rollDiceToken(token.value);
+      if ((token = take("name"))) {
+        if (!take("(")) throw new Error("function");
+        var args = [parseExpression()];
+        while (take(",")) args.push(parseExpression());
+        if (!take(")")) throw new Error("function");
+        if (token.value === "floor") return Math.floor(args[0]);
+        if (token.value === "ceil") return Math.ceil(args[0]);
+        if (token.value === "round") return Math.round(args[0]);
+        if (token.value === "abs") return Math.abs(args[0]);
+        if (token.value === "min") return Math.min.apply(Math, args);
+        if (token.value === "max") return Math.max.apply(Math, args);
+        throw new Error("function");
+      }
+      if (take("(")) {
+        var value = parseExpression();
+        if (!take(")")) throw new Error("parenthesis");
+        return value;
+      }
+      throw new Error("formula");
+    }
+
+    function parseUnary() {
+      if (take("+")) return parseUnary();
+      if (take("-")) return -parseUnary();
+      return parsePrimary();
+    }
+
+    function parseTerm() {
+      var value = parseUnary();
+      while (peek("*") || peek("/")) {
+        var operator = tokens[position++].type;
+        var right = parseUnary();
+        value = operator === "*" ? value * right : value / right;
+      }
+      return value;
+    }
+
+    function parseExpression() {
+      var value = parseTerm();
+      while (peek("+") || peek("-")) {
+        var operator = tokens[position++].type;
+        var right = parseTerm();
+        value = operator === "+" ? value + right : value - right;
+      }
+      return value;
+    }
+
+    try {
+      var total = parseExpression();
+      if (position !== tokens.length || !Number.isFinite(total)) return null;
+      total = Math.trunc(total);
+      return { total: total, breakdown: diceDetails.length ? diceDetails.join(" · ") : normalized + " = " + total, dice: rolledDice };
+    } catch { return null; }
   }
 
   function rollLocalFormula(label, formula, kind) {
@@ -1320,10 +1416,19 @@
     scrim.type = "button";
     scrim.setAttribute("aria-label", "Close roll result");
     var card = create("section", "roll-result-card");
-    card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "attack" ? "Attack roll" : "Phone dice"));
+    card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "healing" ? "Healing roll" : roll.kind === "attack" ? "Attack roll" : "Phone dice"));
     card.appendChild(create("h2", "", roll.label));
     var stage = create("div", "dice-stage");
-    stage.appendChild(create("span", "local-die", "◇"));
+    var tray = create("div", "phone-dice-tray");
+    (roll.dice || []).slice(0, 12).forEach(function (die, index) {
+      var dieElement = create("span", "phone-die phone-d" + die.sides + (die.kept === false ? " dropped" : ""));
+      dieElement.style.setProperty("--die-index", index);
+      dieElement.appendChild(create("strong", "", String(die.result)));
+      dieElement.appendChild(create("small", "", "d" + die.sides));
+      tray.appendChild(dieElement);
+    });
+    if ((roll.dice || []).length > 12) tray.appendChild(create("span", "dice-more", "+" + ((roll.dice || []).length - 12)));
+    stage.appendChild(tray);
     stage.appendChild(create("strong", "roll-result-total", String(roll.total)));
     card.appendChild(stage);
     card.appendChild(create("p", "roll-result-breakdown", roll.formula + "  ·  " + roll.breakdown));
@@ -1357,23 +1462,107 @@
     panel.appendChild(create("p", "item-detail-subtitle", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
     panel.appendChild(create("p", "item-detail-copy", item.description || "No additional item details were provided in Foundry."));
     var controls = create("div", "item-detail-actions");
-    (item.rolls || []).forEach(function (roll) {
-      var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
-      rollButton.type = "button";
-      rollButton.addEventListener("click", function () {
-        closeSettings();
-        rollLocalFormula(item.name + " · " + roll.label, roll.formula, roll.kind || "item");
-      });
-      controls.appendChild(rollButton);
+    var activities = item.activities || [];
+    activities.forEach(function (activity) {
+      var card = create("section", "activity-card");
+      var heading = create("header", "activity-card-heading");
+      heading.appendChild(create("h3", "", activity.name || activity.typeLabel || "Activity"));
+      heading.appendChild(create("span", "activity-type", activity.typeLabel || activity.type || "Activity"));
+      card.appendChild(heading);
+
+      var facts = create("div", "activity-facts");
+      if (activity.activation) facts.appendChild(create("span", "", activity.activation));
+      if (activity.duration) facts.appendChild(create("span", "", activity.duration));
+      if (activity.concentration) facts.appendChild(create("span", "activity-concentration", "Concentration"));
+      if (activity.save && activity.save.dc) {
+        var saveAbilities = (activity.save.abilityLabels || activity.save.abilities || []).join(" or ");
+        var saveText = (saveAbilities ? saveAbilities + " " : "") + "save · DC " + activity.save.dc;
+        if (activity.save.onSuccess === "half") saveText += " · half on success";
+        else if (activity.save.onSuccess === "none") saveText += " · no damage on success";
+        facts.appendChild(create("span", "activity-save", saveText));
+      }
+      if (facts.childNodes.length) card.appendChild(facts);
+      if (activity.description) card.appendChild(create("p", "activity-description", activity.description));
+
+      var castOptions = activity.castOptions || [];
+      var castSelect = null;
+      if (item.category === "spell" && castOptions.length) {
+        var castLabel = create("label", "activity-cast-level");
+        castLabel.appendChild(create("span", "", activity.requiresSpellSlot ? "Cast using" : "Casting"));
+        castSelect = document.createElement("select");
+        castOptions.forEach(function (castOption, index) {
+          var option = document.createElement("option");
+          option.value = String(index);
+          option.textContent = castOption.label;
+          option.disabled = activity.requiresSpellSlot && Number(castOption.value || 0) < 1;
+          castSelect.appendChild(option);
+        });
+        var firstAvailable = castOptions.findIndex(function (castOption) { return !activity.requiresSpellSlot || Number(castOption.value || 0) > 0; });
+        castSelect.value = String(firstAvailable >= 0 ? firstAvailable : 0);
+        castLabel.appendChild(castSelect);
+        card.appendChild(castLabel);
+      }
+
+      var activityActions = create("div", "activity-roll-actions");
+      function renderActivityActions() {
+        activityActions.replaceChildren();
+        var selectedOption = castOptions.length ? castOptions[Number(castSelect ? castSelect.value : 0)] : { level: Number(item.spellLevel || 0), slotKey: "" };
+        var levelData = (activity.rollsByLevel || []).find(function (entry) { return Number(entry.level) === Number(selectedOption.level); }) || (activity.rollsByLevel || [])[0];
+        (levelData && levelData.rolls || []).forEach(function (roll) {
+          var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
+          rollButton.type = "button";
+          rollButton.addEventListener("click", function () {
+            closeSettings();
+            rollLocalFormula(item.name + " · " + activity.name + " · " + roll.label, roll.formula, roll.kind || "item");
+          });
+          activityActions.appendChild(rollButton);
+        });
+        if (activity.canConsume) {
+          var noSlot = activity.requiresSpellSlot && Number(selectedOption.value || 0) < 1;
+          var useText = activity.requiresSpellSlot
+            ? noSlot ? "No slots remaining" : "Spend " + selectedOption.label
+            : item.category === "spell" ? "Cast without a spell slot" : "Use activity and spend resources";
+          var use = create("button", "primary-button full-button", useText);
+          use.type = "button";
+          use.disabled = noSlot;
+          use.addEventListener("click", function () {
+            closeSettings();
+            sendAction("consumeItem", {
+              itemUuid: item.uuid,
+              activityId: activity.id,
+              slotKey: selectedOption.slotKey || "",
+              castLevel: Number(selectedOption.level || item.spellLevel || 0)
+            }, item.name + " resources updated in Foundry.");
+          });
+          activityActions.appendChild(use);
+        }
+        if (!activityActions.childNodes.length) activityActions.appendChild(create("p", "activity-empty", "This activity has information but no phone roll or resource cost."));
+      }
+      if (castSelect) castSelect.addEventListener("change", renderActivityActions);
+      renderActivityActions();
+      card.appendChild(activityActions);
+      controls.appendChild(card);
     });
-    if (item.canConsume) {
-      var use = create("button", "primary-button full-button", item.category === "spell" ? "Cast and spend resources" : "Use and spend resources");
-      use.type = "button";
-      use.addEventListener("click", function () {
-        closeSettings();
-        sendAction("consumeItem", { itemUuid: item.uuid }, item.name + " resources updated in Foundry.");
+
+    if (!activities.length) {
+      (item.rolls || []).forEach(function (roll) {
+        var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
+        rollButton.type = "button";
+        rollButton.addEventListener("click", function () {
+          closeSettings();
+          rollLocalFormula(item.name + " · " + roll.label, roll.formula, roll.kind || "item");
+        });
+        controls.appendChild(rollButton);
       });
-      controls.appendChild(use);
+      if (item.canConsume) {
+        var use = create("button", "primary-button full-button", "Use and spend resources");
+        use.type = "button";
+        use.addEventListener("click", function () {
+          closeSettings();
+          sendAction("consumeItem", { itemUuid: item.uuid }, item.name + " resources updated in Foundry.");
+        });
+        controls.appendChild(use);
+      }
     }
     elements.modalContent.replaceChildren(panel, controls);
     elements.modal.hidden = false;

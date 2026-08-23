@@ -18,12 +18,14 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - portrait-first phone layout with a clear blue, restrained fantasy style
 - portrait and identity details for species, background, class, subclass, alignment, size, and languages
 - character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
-- dedicated Spells tab grouped by cantrips and spell level, with live Foundry slot counts
+- dedicated Spells tab grouped by cantrips and spell level, with live Foundry slot counts and a selectable casting slot
 - separate Actions and Feats shelves with tap-to-read item details
-- local phone dice for abilities, skills, saves, initiative, attacks, damage, and death saves, with an animated result and device roll history
+- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, with animated dice and device roll history
 - separate positive-number controls for damage and healing, sent as one Foundry update
-- spell slots and limited-use charges still spent on the authoritative Foundry character sheet without a GM-authored roll card
-- optional Dice So Nice mirroring in Foundry, using its official no-chat API when the module is active
+- spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
+- chosen spell slots and limited-use charges are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
+- app-native dice are the primary roll display, with optional Dice So Nice mirroring in Foundry through its official no-chat API
+- D&D 5e damage now uses the system HP handler so temporary HP is spent first and healing restores current HP correctly
 - GM-shared journal entries and images
 - table chat plus local d4/d6/d8/d10/d12/d20 rolls
 - GM-curated shop requests

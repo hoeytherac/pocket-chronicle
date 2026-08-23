@@ -76,6 +76,41 @@ export interface ChronicleActor {
       formula: string;
       kind: "attack" | "damage" | "healing" | "item";
     }>;
+    activities?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      typeLabel?: string;
+      activation?: string;
+      duration?: string;
+      concentration?: boolean;
+      description?: string;
+      save?: {
+        abilities: string[];
+        abilityLabels: string[];
+        dc: number;
+        onSuccess?: string;
+      };
+      castOptions?: Array<{
+        slotKey?: string;
+        level: number;
+        label: string;
+        value?: number;
+        max?: number;
+        pact?: boolean;
+      }>;
+      rollsByLevel?: Array<{
+        level: number;
+        rolls: Array<{
+          key: string;
+          label: string;
+          formula: string;
+          kind: "attack" | "damage" | "healing" | "item";
+        }>;
+      }>;
+      canConsume?: boolean;
+      requiresSpellSlot?: boolean;
+    }>;
     canConsume?: boolean;
   }>;
   owners?: Array<{ userId: string; name: string }>;

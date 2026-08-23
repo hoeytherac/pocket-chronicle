@@ -337,6 +337,19 @@ function preparedFormula(value, item) {
   return String(formula).replace(/[−–—]/g, "-");
 }
 
+function resolvedRollFormula(formula, data, item) {
+  let source = String(formula || "");
+  try {
+    source = Roll.replaceFormulaData(source, data || item?.getRollData?.() || item?.parent?.getRollData?.() || {}, { missing: "0" });
+  } catch { /* Keep the prepared formula if custom roll data is unavailable. */ }
+  return source
+    .replace(/\[[^\]]*]/g, "")
+    .replace(/Math\.(floor|ceil|round|abs|min|max)/gi, "$1")
+    .replace(/[−–—]/g, "-")
+    .replace(/\s+/g, "")
+    .replace(/\+-/g, "-");
+}
+
 function extractDiceFormula(value, item) {
   const source = preparedFormula(value, item);
   const match = source.match(/(?:\d*)d\d+(?:\s*[+-]\s*(?:(?:\d*)d\d+|\d+))*/i);
@@ -355,7 +368,7 @@ function attackFormula(value, item) {
   return `1d20${number > 0 ? `+${number}` : number < 0 ? number : ""}`;
 }
 
-function itemLocalRolls(item) {
+function legacyItemLocalRolls(item) {
   const rolls = [];
   const seen = new Set();
   const add = (label, formula, kind) => {
@@ -393,14 +406,141 @@ function itemLocalRolls(item) {
   return rolls.slice(0, 8);
 }
 
+function activityTypeLabel(activity) {
+  const configured = CONFIG.DND5E?.activityTypes?.[activity.type];
+  return localized(configured?.title || configured?.label, String(activity.type || "Activity").replace(/(^|\s)\S/g, (letter) => letter.toUpperCase()));
+}
+
+function activityCastOptions(item, activity, spellSlots) {
+  const baseLevel = item.type === "spell" ? Math.max(0, Number(item.system?.level || 0)) : 0;
+  const requiresSpellSlot = Boolean(item.type === "spell" && baseLevel > 0 && activity.requiresSpellSlot && activity.consumption?.spellSlot !== false);
+  if (!requiresSpellSlot) return [{ slotKey: "", level: baseLevel, label: baseLevel ? `Level ${baseLevel} · no spell slot` : "At will" }];
+  return spellSlots
+    .filter((slot) => slot.level >= baseLevel)
+    .map((slot) => ({
+      slotKey: slot.key,
+      level: slot.level,
+      label: `${slot.label} · ${slot.value}/${slot.max}`,
+      value: slot.value,
+      max: slot.max,
+      pact: slot.pact,
+    }));
+}
+
+function activitySaveData(activity) {
+  if (activity.type !== "save" || !activity.save) return undefined;
+  const abilities = collectionValues(activity.save.ability).map(String);
+  return {
+    abilities,
+    abilityLabels: abilities.map((ability) => localized(CONFIG.DND5E?.abilities?.[ability], ability.toUpperCase())),
+    dc: Math.max(0, Number(activity.save.dc?.value || 0)),
+    onSuccess: String(activity.damage?.onSave || ""),
+  };
+}
+
+function activityRollsAtLevel(item, activity, castLevel) {
+  const baseLevel = item.type === "spell" ? Math.max(0, Number(item.system?.level || 0)) : 0;
+  const scaling = item.type === "spell" ? Math.max(0, Number(castLevel || baseLevel) - baseLevel) : 0;
+  let rollItem = item;
+  let rollActivity = activity;
+  if (scaling > 0) {
+    try {
+      rollItem = item.clone({ "flags.dnd5e": { ...(item.flags?.dnd5e || {}), scaling } }, { keepId: true });
+      rollItem.prepareFinalAttributes?.();
+      rollActivity = rollItem.system?.activities?.get(activity.id || activity._id) || activity;
+    } catch (error) {
+      console.debug(`${MODULE_ID} | Could not clone ${item.name} for scaled phone rolls`, error);
+    }
+  }
+  const rolls = [];
+  const seen = new Set();
+  const add = (label, formula, kind) => {
+    const normalized = resolvedRollFormula(formula, null, rollItem);
+    if (!normalized || !/d\d+/i.test(normalized) || seen.has(`${kind}:${normalized}`)) return;
+    seen.add(`${kind}:${normalized}`);
+    rolls.push({ key: `${rollActivity.id || rollActivity._id}-${kind}-${rolls.length + 1}`, label, formula: normalized, kind });
+  };
+
+  if (rollActivity.type === "attack") {
+    let formula = "";
+    try {
+      const attack = rollActivity.getAttackData?.() || {};
+      const modifier = resolvedRollFormula(collectionValues(attack.parts).join(" + "), attack.data, rollItem);
+      if (modifier) formula = `1d20+(${modifier})`;
+    } catch { /* Fall back to the prepared to-hit label. */ }
+    if (!formula) formula = attackFormula(rollActivity.labels?.toHit || rollActivity.labels?.modifier, rollItem);
+    add("Attack", formula || "1d20", "attack");
+  }
+
+  try {
+    const damageConfig = rollActivity.getDamageConfig?.({ scaling }) || { rolls: [] };
+    for (const roll of damageConfig.rolls || []) {
+      const formula = resolvedRollFormula(collectionValues(roll.parts).join(" + "), roll.data, rollItem);
+      const typeKeys = collectionValues(roll.options?.types).length
+        ? collectionValues(roll.options.types)
+        : roll.options?.type ? [roll.options.type] : [];
+      const healing = rollActivity.type === "heal" || typeKeys.some((type) => Boolean(CONFIG.DND5E?.healingTypes?.[type]));
+      const labels = typeKeys.map((type) => localized(
+        CONFIG.DND5E?.damageTypes?.[type] || CONFIG.DND5E?.healingTypes?.[type],
+        String(type),
+      )).filter(Boolean);
+      add(healing ? (labels.length ? `${labels.join(" + ")} healing` : "Healing") : (labels.length ? `${labels.join(" + ")} damage` : "Damage"), formula, healing ? "healing" : "damage");
+    }
+  } catch (error) {
+    console.debug(`${MODULE_ID} | Could not prepare activity damage for ${item.name}`, error);
+  }
+
+  if (!rolls.some((roll) => ["damage", "healing"].includes(roll.kind)) && scaling === 0) {
+    for (const damage of collectionValues(rollActivity.labels?.damage)) {
+      const formula = resolvedRollFormula(damage?.formula || damage?.label || damage, null, rollItem);
+      const type = damage?.damageType;
+      const healing = rollActivity.type === "heal" || Boolean(CONFIG.DND5E?.healingTypes?.[type]);
+      const typeLabel = localized(CONFIG.DND5E?.damageTypes?.[type] || CONFIG.DND5E?.healingTypes?.[type], "");
+      add(healing ? (typeLabel ? `${typeLabel} healing` : "Healing") : (typeLabel ? `${typeLabel} damage` : "Damage"), formula, healing ? "healing" : "damage");
+    }
+  }
+  return rolls.slice(0, 12);
+}
+
+function activityConsumesResources(item, activity) {
+  if (item.type === "consumable") return true;
+  if (Number(activity.uses?.max || 0) > 0 || Number(item.system?.uses?.max || 0) > 0) return true;
+  if (item.type === "spell" && activity.requiresSpellSlot && activity.consumption?.spellSlot !== false) return true;
+  return collectionValues(activity.consumption?.targets).length > 0;
+}
+
+function itemActivityData(item, spellSlots) {
+  return collectionValues(item.system?.activities).map((activity) => {
+    const castOptions = activityCastOptions(item, activity, spellSlots);
+    const levels = [...new Set(castOptions.map((option) => option.level))];
+    if (!levels.length) levels.push(Math.max(0, Number(item.system?.level || 0)));
+    return {
+      id: String(activity.id || activity._id),
+      name: String(activity.name || activityTypeLabel(activity)),
+      type: String(activity.type || "activity"),
+      typeLabel: activityTypeLabel(activity),
+      activation: String(activity.labels?.activation || item.labels?.activation || ""),
+      duration: String(activity.labels?.duration || item.labels?.duration || ""),
+      concentration: Boolean(activity.requiresConcentration),
+      description: plainText(activity.description?.chatFlavor || ""),
+      save: activitySaveData(activity),
+      castOptions,
+      rollsByLevel: levels.map((level) => ({ level, rolls: activityRollsAtLevel(item, activity, level) })),
+      canConsume: activityConsumesResources(item, activity),
+      requiresSpellSlot: Boolean(item.type === "spell" && activity.requiresSpellSlot && activity.consumption?.spellSlot !== false),
+    };
+  });
+}
+
+function itemLocalRolls(item, activities = []) {
+  const activityRolls = activities.flatMap((activity) => activity.rollsByLevel?.[0]?.rolls || []);
+  return activityRolls.length ? activityRolls.slice(0, 12) : legacyItemLocalRolls(item);
+}
+
 function itemConsumesResources(item) {
   if (item.type === "consumable") return true;
   if (Number(item.system?.uses?.max || 0) > 0) return true;
-  if (item.type === "spell" && Number(item.system?.level || 0) > 0) return true;
-  return collectionValues(item.system?.activities).some((activity) => {
-    const consumption = activity.consumption || {};
-    return collectionValues(consumption.targets).length > 0 || Number(consumption.amount || 0) > 0;
-  });
+  return collectionValues(item.system?.activities).some((activity) => activityConsumesResources(item, activity));
 }
 
 function actorSpellSlots(system) {
@@ -464,6 +604,7 @@ async function buildSnapshot(actor) {
   const customLanguages = String(system.traits?.languages?.custom || "").split(/[;,]/).map((value) => value.trim()).filter(Boolean);
   const species = speciesItem?.name || detailText(system.details?.species) || detailText(system.details?.race) || "Adventurer";
   const className = classes.map((item) => item.name).join(" / ") || "Adventurer";
+  const spellSlots = actorSpellSlots(system);
   const actionItems = actor.items.filter((item) => ["weapon", "spell", "feat", "consumable", "equipment", "tool"].includes(item.type));
   const journals = game.journal.filter((journal) => journal.getFlag(MODULE_ID, SHARED_FLAG));
   const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG));
@@ -506,20 +647,24 @@ async function buildSnapshot(actor) {
       saves,
       skills,
       resources: Object.entries(system.resources || {}).filter(([, value]) => value?.label).map(([key, value]) => ({ key, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0) })),
-      spellSlots: actorSpellSlots(system),
-      actions: actionItems.slice(0, 160).map((item) => ({
-        uuid: item.uuid,
-        name: item.name,
-        type: item.type,
-        category: itemCategory(item),
-        subtitle: itemSubtitle(item),
-        description: plainText(item.system?.description?.value || item.system?.description || ""),
-        image: assetUrl(item.img),
-        uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
-        spellLevel: item.type === "spell" ? Number(item.system?.level || 0) : undefined,
-        rolls: itemLocalRolls(item),
-        canConsume: itemConsumesResources(item),
-      })),
+      spellSlots,
+      actions: actionItems.slice(0, 160).map((item) => {
+        const activities = itemActivityData(item, spellSlots);
+        return {
+          uuid: item.uuid,
+          name: item.name,
+          type: item.type,
+          category: itemCategory(item),
+          subtitle: itemSubtitle(item),
+          description: plainText(item.system?.description?.value || item.system?.description || ""),
+          image: assetUrl(item.img),
+          uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
+          spellLevel: item.type === "spell" ? Number(item.system?.level || 0) : undefined,
+          rolls: itemLocalRolls(item, activities),
+          activities,
+          canConsume: itemConsumesResources(item),
+        };
+      }),
       owners: actorOwners(actor),
       biography: plainText(system.details?.biography?.value || system.details?.biography || ""),
     },
@@ -566,25 +711,61 @@ async function executeAction(action) {
     let result = {};
     switch (action.kind) {
       case "adjustHp": {
-        const current = Number(actor.system.attributes.hp.value || 0);
-        const max = Number(actor.system.attributes.hp.max || current);
-        const value = Math.max(0, Math.min(max, current + Number(action.payload.amount || 0)));
-        await actor.update({ "system.attributes.hp.value": value });
-        result = { value };
+        const change = Number(action.payload.amount || 0);
+        if (!Number.isFinite(change) || change === 0) throw new Error("Enter a valid damage or healing amount.");
+        if (typeof actor.applyDamage === "function") await actor.applyDamage(-change, { ignore: true });
+        else {
+          const hp = actor.system.attributes.hp || {};
+          const current = Number(hp.value || 0);
+          const max = Math.max(current, Number(hp.max || 0));
+          const temp = Math.max(0, Number(hp.temp || 0));
+          if (change < 0) {
+            const damage = Math.abs(change);
+            const tempSpent = Math.min(temp, damage);
+            await actor.update({
+              "system.attributes.hp.temp": temp - tempSpent,
+              "system.attributes.hp.value": Math.max(0, current - (damage - tempSpent)),
+            });
+          } else await actor.update({ "system.attributes.hp.value": Math.min(max, current + change) });
+        }
+        result = {
+          value: Number(actor.system.attributes.hp.value || 0),
+          temp: Number(actor.system.attributes.hp.temp || 0),
+        };
         break;
       }
       case "useItem":
       case "consumeItem": {
         const item = await fromUuid(action.payload.itemUuid);
         if (!item || item.parent?.uuid !== actor.uuid) throw new Error("That item does not belong to this character.");
-        const usage = await item.use?.(
-          { event: { shiftKey: true }, subsequentActions: false },
-          noDialog,
-          { create: false, data: messageData },
-        );
-        const hasActivities = collectionValues(item.system?.activities).length > 0;
+        const activities = collectionValues(item.system?.activities);
+        const activityId = String(action.payload.activityId || "");
+        const activity = activities.find((entry) => String(entry.id || entry._id) === activityId) || activities[0];
+        let castLevel = Math.max(0, Number(item.system?.level || 0));
+        let slotKey = "";
+        if (activity && item.type === "spell" && activity.requiresSpellSlot && activity.consumption?.spellSlot !== false) {
+          slotKey = String(action.payload.slotKey || "");
+          const slot = actorSpellSlots(actor.system).find((entry) => entry.key === slotKey);
+          if (!slot || slot.level < castLevel) throw new Error("Choose an available spell slot for this casting.");
+          if (slot.value < 1) throw new Error(`${slot.label} has no remaining spell slots.`);
+          castLevel = slot.level;
+        }
+        const scaling = Math.max(0, castLevel - Math.max(0, Number(item.system?.level || 0)));
+        const usageConfig = {
+          event: { shiftKey: true },
+          create: false,
+          consume: true,
+          subsequentActions: false,
+          scaling,
+          concentration: { begin: false },
+          ...(slotKey ? { spell: { slot: slotKey } } : {}),
+        };
+        const usage = activity
+          ? await activity.use?.(usageConfig, noDialog, { create: false, data: messageData })
+          : await item.use?.(usageConfig, noDialog, { create: false, data: messageData });
+        const hasActivities = activities.length > 0;
         if (hasActivities && !usage) throw new Error(`${item.name} could not spend its resource. Check its charges, spell slots, or required choices in Foundry.`);
-        result = { item: item.name, consumed: true };
+        result = { item: item.name, consumed: true, activity: activity?.name, castLevel, slotKey };
         break;
       }
       case "roll":
