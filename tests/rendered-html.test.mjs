@@ -76,12 +76,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=22"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=23"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=10/);
-  assert.match(mobile, /mobile\.css\?v=10/);
+  assert.match(mobile, /mobile\.js\?v=11/);
+  assert.match(mobile, /mobile\.css\?v=11/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="effects"/);
   assert.match(mobile, /Foundry companion/i);
@@ -107,6 +107,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /resolveWithin/);
   assert.match(mobileScript, /physicalDiceDisabled/);
   assert.match(mobileScript, /pausePhysicalDice/);
+  assert.match(mobileScript, /resetPhysicalDiceEngine/);
+  assert.match(mobileScript, /physicalDiceGeneration/);
+  assert.match(mobileScript, /layer\.replaceChildren\(\)/);
   assert.match(mobileScript, /Quick result used because 3D dice took too long/);
   assert.match(mobileScript, /await rollLocalFormula\("Death saving throw"/);
   assert.match(mobileScript, /consumptionByOption/);

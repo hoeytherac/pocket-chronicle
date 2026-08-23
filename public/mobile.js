@@ -1519,14 +1519,36 @@
   var diceBoxInstance = null;
   var physicalDiceDisabled = false;
   var physicalDiceRetryTimer = 0;
+  var physicalDiceGeneration = 0;
+
+  function prefersReducedMotion() {
+    return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function canTryPhysicalDice() {
+    return !physicalDiceDisabled && !prefersReducedMotion();
+  }
+
+  function resetPhysicalDiceEngine() {
+    physicalDiceGeneration += 1;
+    var oldInstance = diceBoxInstance;
+    diceBoxInstance = null;
+    diceBoxPromise = null;
+    try { if (oldInstance) oldInstance.clear(); } catch { /* The renderer may already be unresponsive. */ }
+    var layer = document.getElementById("physics-dice-layer");
+    if (layer) {
+      layer.classList.remove("active");
+      layer.replaceChildren();
+    }
+  }
 
   function pausePhysicalDice() {
     physicalDiceDisabled = true;
+    resetPhysicalDiceEngine();
     window.clearTimeout(physicalDiceRetryTimer);
     physicalDiceRetryTimer = window.setTimeout(function () {
       physicalDiceDisabled = false;
-      diceBoxPromise = null;
-    }, 45000);
+    }, 15000);
   }
 
   function resolveWithin(promise, milliseconds) {
@@ -1549,10 +1571,10 @@
 
   async function getDiceBox() {
     if (diceBoxInstance) return diceBoxInstance;
-    if (physicalDiceDisabled) return null;
-    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
+    if (!canTryPhysicalDice()) return null;
     if (!diceBoxPromise) {
       physicalDiceLayer();
+      var generation = physicalDiceGeneration;
       diceBoxPromise = import("/vendor/dice-box/dice-box.es.min.js").then(async function (module) {
         var DiceBox = module.default;
         var box = new DiceBox({
@@ -1568,11 +1590,15 @@
           delay: 25
         });
         await box.init();
+        if (generation !== physicalDiceGeneration) {
+          try { box.clear(); } catch { /* A newer renderer has already taken over. */ }
+          return null;
+        }
         diceBoxInstance = box;
         return box;
       }).catch(function (error) {
         console.warn("Pocket Chronicle 3D dice are unavailable; using the lightweight roller.", error);
-        diceBoxPromise = null;
+        if (generation === physicalDiceGeneration) diceBoxPromise = null;
         return null;
       });
     }
@@ -1581,8 +1607,8 @@
 
   async function rollPhysicalDice(formula) {
     var groups = diceNotationGroups(formula);
-    if (!groups.length || physicalDiceDisabled) return null;
-    var box = await resolveWithin(getDiceBox(), 6000);
+    if (!groups.length || !canTryPhysicalDice()) return null;
+    var box = await resolveWithin(getDiceBox(), 5000);
     if (!box) {
       pausePhysicalDice();
       return null;
@@ -1590,7 +1616,7 @@
     var layer = physicalDiceLayer();
     layer.classList.add("active");
     try {
-      var results = await resolveWithin(box.roll(groups, { theme: "default", themeColor: "#7faed2" }), 7500);
+      var results = await resolveWithin(box.roll(groups, { theme: "default", themeColor: "#7faed2" }), 5000);
       if (!results) {
         pausePhysicalDice();
         try { box.clear(); } catch { /* The layer is hidden below even if the renderer stopped responding. */ }
@@ -1639,7 +1665,7 @@
     }
     var groups = diceNotationGroups(formula);
     var suppliedDice = null;
-    var triedPhysics = groups.length > 0 && !physicalDiceDisabled;
+    var triedPhysics = groups.length > 0 && canTryPhysicalDice();
     if (triedPhysics) {
       showRollPreparing(label || formula);
       suppliedDice = await rollPhysicalDice(formula);
@@ -1695,7 +1721,7 @@
     var combinedFormula = prepared.map(function (row) { return "(" + row.entry.formula + ")"; }).join("+");
     var groups = diceNotationGroups(combinedFormula);
     var suppliedDice = null;
-    var triedPhysics = groups.length > 0 && !physicalDiceDisabled;
+    var triedPhysics = groups.length > 0 && canTryPhysicalDice();
     if (triedPhysics) {
       showRollPreparing(label);
       suppliedDice = await rollPhysicalDice(combinedFormula);
