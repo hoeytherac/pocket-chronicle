@@ -1650,20 +1650,10 @@
     scrim.setAttribute("aria-label", "Close roll result");
     var card = create("section", "roll-result-card");
     card.appendChild(rollSparkles());
-    card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "healing" ? "Healing roll" : roll.kind === "attack" ? "Attack roll" : "Phone dice"));
+    card.appendChild(create("p", "eyebrow", roll.kind === "damage" ? "Damage roll" : roll.kind === "healing" ? "Healing roll" : roll.kind === "attack" ? "Attack roll" : "Phone roll"));
     card.appendChild(create("h2", "", roll.label));
     var stage = create("div", "dice-stage");
     stage.appendChild(resultCoin(roll.total, false));
-    var tray = create("div", "phone-dice-tray");
-    (roll.dice || []).slice(0, 12).forEach(function (die, index) {
-      var dieElement = create("span", "phone-die phone-d" + die.sides + (die.kept === false ? " dropped" : ""));
-      dieElement.style.setProperty("--die-index", index);
-      dieElement.appendChild(create("strong", "", String(die.result)));
-      dieElement.appendChild(create("small", "", "d" + die.sides));
-      tray.appendChild(dieElement);
-    });
-    if ((roll.dice || []).length > 12) tray.appendChild(create("span", "dice-more", "+" + ((roll.dice || []).length - 12)));
-    stage.appendChild(tray);
     card.appendChild(stage);
     card.appendChild(create("p", "roll-result-breakdown", roll.formula + "  ·  " + roll.breakdown));
     card.appendChild(create("small", "roll-result-note", "Tap anywhere to close · Stays open for 30 seconds"));
