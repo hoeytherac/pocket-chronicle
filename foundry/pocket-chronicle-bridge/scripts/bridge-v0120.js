@@ -1,8 +1,9 @@
-/* Pocket Chronicle Bridge v0.13.0 */
+/* Pocket Chronicle Bridge v0.13.1 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
+const REST_RATIONS_ID = "pocket-chronicle-rest-rations";
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
 let bridgeLastError = "";
@@ -40,7 +41,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.13.0",
+    version: "0.13.1",
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
@@ -77,6 +78,8 @@ Hooks.once("ready", () => {
       return shared;
     },
   };
+
+  Hooks.callAll("pocketChronicleBridgeReady", moduleRecord?.api);
 
   if (!game.user?.isGM) return;
   startBridge();
@@ -653,7 +656,7 @@ function moduleIntegrations() {
 
 async function extensionSnapshotData(actor) {
   const data = {};
-  for (const [id, extension] of bridgeExtensions.entries()) {
+  for (const [id, extension] of availableExtensions().entries()) {
     if (typeof extension.getSnapshotData !== "function") continue;
     try {
       const value = await extension.getSnapshotData(actor);
@@ -666,7 +669,7 @@ async function extensionSnapshotData(actor) {
 }
 
 async function executeExtensionAction(action, context) {
-  for (const extension of bridgeExtensions.values()) {
+  for (const extension of availableExtensions().values()) {
     const actionKinds = Array.isArray(extension.actionKinds) ? extension.actionKinds : [];
     const canHandle = actionKinds.includes(action.kind)
       || (typeof extension.canHandleAction === "function" && await extension.canHandleAction(action, context));
@@ -674,6 +677,22 @@ async function executeExtensionAction(action, context) {
     return extension.executeAction(action, context);
   }
   throw new Error("Unsupported phone action.");
+}
+
+function availableExtensions() {
+  const extensions = new Map(bridgeExtensions);
+  if (!extensions.has("restRations")) {
+    const restRations = game.modules.get(REST_RATIONS_ID);
+    const api = restRations?.active ? restRations.api : null;
+    if (typeof api?.getSnapshotData === "function" && typeof api?.executeAction === "function") {
+      extensions.set("restRations", {
+        actionKinds: ["takeRationsRest"],
+        getSnapshotData: api.getSnapshotData,
+        executeAction: api.executeAction,
+      });
+    }
+  }
+  return extensions;
 }
 
 function activityAutomation(item, activity) {

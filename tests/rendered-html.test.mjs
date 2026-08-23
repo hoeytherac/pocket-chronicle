@@ -160,6 +160,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /setTempHp/);
   assert.match(bridge, /registerExtension/);
   assert.match(bridge, /executeExtensionAction/);
+  assert.match(bridge, /pocketChronicleBridgeReady/);
+  assert.match(bridge, /availableExtensions/);
+  assert.match(bridge, /pocket-chronicle-rest-rations/);
   assert.match(bridge, /Open Shop Manager/);
   assert.match(bridge, /currencyTotal/);
   assert.match(bridge, /consumeItem/);
@@ -194,7 +197,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.13\.0"/);
+  assert.match(moduleManifest, /"version": "0\.13\.1"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);
