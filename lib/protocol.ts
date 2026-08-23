@@ -12,6 +12,7 @@ export type ChronicleActionKind =
   | "rollInitiative"
   | "rollDeathSave"
   | "recordDeathSave"
+  | "showDice"
   | "setInspiration"
   | "chat"
   | "purchase"
@@ -51,6 +52,14 @@ export interface ChronicleActor {
     proficiency: number;
   }>;
   resources: Array<{ key: string; label: string; value: number; max: number }>;
+  spellSlots?: Array<{
+    key: string;
+    label: string;
+    level: number;
+    value: number;
+    max: number;
+    pact?: boolean;
+  }>;
   actions: Array<{
     uuid: string;
     name: string;
@@ -60,6 +69,7 @@ export interface ChronicleActor {
     description?: string;
     image?: string;
     uses?: string;
+    spellLevel?: number;
     rolls?: Array<{
       key: string;
       label: string;
@@ -138,6 +148,7 @@ export const allowedActionKinds = new Set<ChronicleActionKind>([
   "rollInitiative",
   "rollDeathSave",
   "recordDeathSave",
+  "showDice",
   "setInspiration",
   "chat",
   "purchase",

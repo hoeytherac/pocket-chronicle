@@ -18,10 +18,12 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - portrait-first phone layout with a clear blue, restrained fantasy style
 - portrait and identity details for species, background, class, subclass, alignment, size, and languages
 - character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
-- separate Actions, Spells, and Feats shelves with tap-to-read item details
+- dedicated Spells tab grouped by cantrips and spell level, with live Foundry slot counts
+- separate Actions and Feats shelves with tap-to-read item details
 - local phone dice for abilities, skills, saves, initiative, attacks, damage, and death saves, with an animated result and device roll history
 - signed HP changes such as `-10` damage or `+15` healing sent as one Foundry update
 - spell slots and limited-use charges still spent on the authoritative Foundry character sheet without a GM-authored roll card
+- optional Dice So Nice mirroring in Foundry, using its official no-chat API when the module is active
 - GM-shared journal entries and images
 - table chat plus local d4/d6/d8/d10/d12/d20 rolls
 - GM-curated shop requests

@@ -403,6 +403,26 @@ function itemConsumesResources(item) {
   });
 }
 
+function actorSpellSlots(system) {
+  return Object.entries(system.spells || {}).flatMap(([key, slot]) => {
+    if (!slot || typeof slot !== "object") return [];
+    const pact = key === "pact";
+    const match = key.match(/^spell(\d+)$/);
+    if (!pact && !match) return [];
+    const level = pact ? Number(slot.level || 0) : Number(match[1]);
+    const max = Math.max(0, Number(slot.max || slot.override || 0));
+    if (!level || !max) return [];
+    return [{
+      key,
+      label: pact ? `Pact Magic · Level ${level}` : `Level ${level}`,
+      level,
+      value: Math.max(0, Number(slot.value || 0)),
+      max,
+      pact,
+    }];
+  }).sort((a, b) => a.level - b.level || Number(a.pact) - Number(b.pact));
+}
+
 async function buildSnapshot(actor) {
   const system = actor.system || {};
   const classes = actor.items.filter((item) => item.type === "class");
@@ -486,6 +506,7 @@ async function buildSnapshot(actor) {
       saves,
       skills,
       resources: Object.entries(system.resources || {}).filter(([, value]) => value?.label).map(([key, value]) => ({ key, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0) })),
+      spellSlots: actorSpellSlots(system),
       actions: actionItems.slice(0, 160).map((item) => ({
         uuid: item.uuid,
         name: item.name,
@@ -495,6 +516,7 @@ async function buildSnapshot(actor) {
         description: plainText(item.system?.description?.value || item.system?.description || ""),
         image: assetUrl(item.img),
         uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
+        spellLevel: item.type === "spell" ? Number(item.system?.level || 0) : undefined,
         rolls: itemLocalRolls(item),
         canConsume: itemConsumesResources(item),
       })),
@@ -596,6 +618,31 @@ async function executeAction(action) {
         update["system.attributes.death.failure"] = failures;
         await actor.update(update);
         result = { total, successes, failures, revived: total === 20 };
+        break;
+      }
+      case "showDice": {
+        const dice = Array.isArray(action.payload.dice) ? action.payload.dice.slice(0, 100) : [];
+        const safeDice = dice.flatMap((die) => {
+          const sides = Math.max(2, Math.min(1000, Number(die?.sides || 0)));
+          const value = Math.max(1, Math.min(sides, Number(die?.result || 0)));
+          if (!Number.isInteger(sides) || !Number.isInteger(value)) return [];
+          return [{ result: value, resultLabel: value, type: `d${sides}`, vectors: [], options: {} }];
+        });
+        let displayed = false;
+        if (safeDice.length && game.modules.get("dice-so-nice")?.active && typeof game.dice3d?.show === "function") {
+          try {
+            displayed = Boolean(await game.dice3d.show(
+              { throws: [{ dice: safeDice }] },
+              actingUser || game.user,
+              true,
+              null,
+              false,
+            ));
+          } catch (error) {
+            console.debug(`${MODULE_ID} | Dice So Nice mirror skipped`, error);
+          }
+        }
+        result = { displayed, diceSoNiceActive: Boolean(game.modules.get("dice-so-nice")?.active) };
         break;
       }
       case "setInspiration": {

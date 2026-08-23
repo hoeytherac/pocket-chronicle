@@ -18,7 +18,7 @@ If a player forgets that separate password, they can tap **Forgot or reset this 
 
 The bridge does not depend on the Scene canvas. Phone requests, approvals, character data, journals, chat, and actions continue to work when the canvas is disabled.
 
-Version 0.8 keeps ability, skill, save, initiative, attack, damage, death-save, and loose-die rolls local to the signed-in player's phone. Results receive an animated reveal and remain in that phone's roll history, so the active GM bridge never authors those roll cards. The bridge still applies signed HP changes, inspiration, death-save marks, spell-slot consumption, and limited-use charges to the authoritative Foundry actor without creating a chat card.
+Version 0.9 adds level-grouped spellbook data and live spell-slot pools. Ability, skill, save, initiative, attack, damage, death-save, and loose-die rolls remain local to the signed-in player's phone. When Dice So Nice is active, the bridge mirrors those exact dice through its official `game.dice3d.show` API without creating a chat card; the phone's lightweight animation remains the dependable fallback. The bridge still applies signed HP changes, inspiration, death-save marks, spell-slot consumption, and limited-use charges to the authoritative Foundry actor.
 
 Every DM uses their own campaign ID and private bridge key. The bridge pushes a sanitized allowlist to Pocket Chronicle over HTTPS—the hosted app never needs the Foundry server address, administrator password, or direct inbound access.
 

@@ -47,7 +47,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v080.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v090.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -74,11 +74,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=16"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=17"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=4/);
+  assert.match(mobile, /mobile\.js\?v=5/);
+  assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /Foundry companion/i);
   assert.doesNotMatch(mobile, /butterfly/i);
   assert.match(mobileScript, /\/api\/campaign\/connect/);
@@ -90,6 +91,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /Phone roll history/);
   assert.match(mobileScript, /hp-change/);
   assert.match(mobileScript, /consumeItem/);
+  assert.match(mobileScript, /showDice/);
+  assert.match(mobileScript, /renderSpells/);
+  assert.match(mobileScript, /Spell slots/);
   assert.match(mobileScript, /Saving throws/);
   assert.match(mobileScript, /sheet-category/);
   assert.match(mobileScript, /Forgot or reset this password/);
@@ -118,14 +122,17 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /subsequentActions: false/);
   assert.match(bridge, /create: false/);
   assert.match(bridge, /itemLocalRolls/);
+  assert.match(bridge, /actorSpellSlots/);
+  assert.match(bridge, /game\.dice3d\.show/);
+  assert.match(bridge, /dice-so-nice/);
   assert.match(bridge, /activePhoneUserId/);
   assert.ok(bridge.indexOf('"campaignId"') < bridge.indexOf('"campaignCode"'));
   assert.ok(bridge.indexOf('"campaignCode"') < bridge.indexOf('"bridgeKey"'));
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(bridge, /Check Requests \/ Resets/);
   assert.match(bridge, /Approve Reset/);
-  assert.match(compatibilityLoader, /bridge-v080\.js/);
-  assert.match(moduleManifest, /bridge-v080\.js/);
+  assert.match(compatibilityLoader, /bridge-v090\.js/);
+  assert.match(moduleManifest, /bridge-v090\.js/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

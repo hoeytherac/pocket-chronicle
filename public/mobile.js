@@ -561,6 +561,7 @@
     if (!state.snapshot) return;
     if (state.tab === "home") renderHome();
     else if (state.tab === "character") renderCharacter();
+    else if (state.tab === "spells") renderSpells();
     else if (state.tab === "journal") renderJournal();
     else if (state.tab === "chat") renderChat();
     else if (state.tab === "shop") renderShop();
@@ -769,9 +770,11 @@
     if (!(actor.skills || []).length) skills.appendChild(emptyState("Skills will appear after the updated Foundry module syncs."));
     fragment.appendChild(skills);
 
-    fragment.appendChild(sectionHeading("Character features", (actor.actions || []).length + " entries"));
+    var characterFeatures = (actor.actions || []).filter(function (item) { return (item.category || item.type) !== "spell"; });
+    fragment.appendChild(sectionHeading("Character features", characterFeatures.length + " entries"));
     var categories = create("div", "sheet-tabs");
-    [["action", "Actions"], ["spell", "Spells"], ["feat", "Feats"]].forEach(function (entry) {
+    categories.classList.add("two-tabs");
+    [["action", "Actions"], ["feat", "Feats"]].forEach(function (entry) {
       var count = (actor.actions || []).filter(function (item) { return (item.category || (item.type === "spell" ? "spell" : item.type === "feat" ? "feat" : "action")) === entry[0]; }).length;
       var tab = create("button", state.sheetCategory === entry[0] ? "active" : "", entry[1] + " " + count);
       tab.type = "button";
@@ -787,43 +790,7 @@
       return category === state.sheetCategory;
     });
     visibleItems.forEach(function (item) {
-      var row = create("div", "action-row");
-      var info = create("button", "item-info-button");
-      info.type = "button";
-      info.dataset.action = "open-item";
-      info.dataset.value = item.uuid;
-      if (item.image) {
-        var itemImage = document.createElement("img");
-        itemImage.src = item.image;
-        itemImage.alt = "";
-        itemImage.loading = "lazy";
-        info.appendChild(itemImage);
-      } else info.appendChild(create("span", "item-image-fallback", "◇"));
-      var copy = document.createElement("span");
-      copy.appendChild(create("strong", "", item.name));
-      copy.appendChild(create("small", "", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
-      info.appendChild(copy);
-      info.appendChild(create("span", "item-chevron", "›"));
-      row.appendChild(info);
-      var firstRoll = (item.rolls || [])[0];
-      var button;
-      if (item.canConsume) {
-        button = create("button", "", item.category === "spell" ? "Cast" : "Use");
-        button.type = "button";
-        button.dataset.action = "consume-item";
-        button.dataset.value = item.uuid;
-        button.dataset.label = item.name;
-        row.appendChild(button);
-      } else if (firstRoll) {
-        button = create("button", "", "Roll");
-        button.type = "button";
-        button.dataset.action = "local-item-roll";
-        button.dataset.label = item.name + " · " + firstRoll.label;
-        button.dataset.formula = firstRoll.formula;
-        button.dataset.kind = firstRoll.kind || "item";
-        row.appendChild(button);
-      }
-      actions.appendChild(row);
+      actions.appendChild(itemRow(item));
     });
     if (!visibleItems.length) actions.appendChild(emptyState("No " + state.sheetCategory + " entries are available for this character."));
     fragment.appendChild(actions);
@@ -844,6 +811,86 @@
     levelButton.type = "button";
     levelButton.dataset.action = "level-up";
     fragment.appendChild(levelButton);
+    elements.viewContent.replaceChildren(fragment);
+  }
+
+  function itemRow(item) {
+    var row = create("div", "action-row");
+    var info = create("button", "item-info-button");
+    info.type = "button";
+    info.dataset.action = "open-item";
+    info.dataset.value = item.uuid;
+    if (item.image) {
+      var itemImage = document.createElement("img");
+      itemImage.src = item.image;
+      itemImage.alt = "";
+      itemImage.loading = "lazy";
+      info.appendChild(itemImage);
+    } else info.appendChild(create("span", "item-image-fallback", "◇"));
+    var copy = document.createElement("span");
+    copy.appendChild(create("strong", "", item.name));
+    copy.appendChild(create("small", "", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
+    info.appendChild(copy);
+    info.appendChild(create("span", "item-chevron", "›"));
+    row.appendChild(info);
+    var firstRoll = (item.rolls || [])[0];
+    var button;
+    if (item.canConsume) {
+      button = create("button", "", item.category === "spell" ? "Cast" : "Use");
+      button.type = "button";
+      button.dataset.action = "consume-item";
+      button.dataset.value = item.uuid;
+      button.dataset.label = item.name;
+      row.appendChild(button);
+    } else if (firstRoll) {
+      button = create("button", "", "Roll");
+      button.type = "button";
+      button.dataset.action = "local-item-roll";
+      button.dataset.label = item.name + " · " + firstRoll.label;
+      button.dataset.formula = firstRoll.formula;
+      button.dataset.kind = firstRoll.kind || "item";
+      row.appendChild(button);
+    }
+    return row;
+  }
+
+  function renderSpells() {
+    var actor = state.snapshot.actor;
+    var fragment = document.createDocumentFragment();
+    fragment.appendChild(pageTitle("Arcane resources", "Spellbook", "Spells arranged by level with your current Foundry spell slots."));
+    var picker = characterPicker();
+    if (picker) fragment.appendChild(picker);
+
+    var slots = actor.spellSlots || [];
+    fragment.appendChild(sectionHeading("Spell slots", slots.length ? "Updates after each cast" : "No slot pool"));
+    var slotGrid = create("div", "spell-slot-grid");
+    slots.forEach(function (slot) {
+      var card = create("section", "spell-slot-card");
+      card.appendChild(create("small", "", slot.label));
+      card.appendChild(create("strong", "", slot.value + " / " + slot.max));
+      var pips = create("span", "slot-pips");
+      for (var index = 0; index < slot.max; index += 1) pips.appendChild(create("i", index < slot.value ? "available" : "spent"));
+      card.appendChild(pips);
+      slotGrid.appendChild(card);
+    });
+    if (!slots.length) slotGrid.appendChild(emptyState("This character has no prepared spell-slot pool. Cantrips and innate spells still appear below."));
+    fragment.appendChild(slotGrid);
+
+    var spells = (actor.actions || []).filter(function (item) { return (item.category || item.type) === "spell"; }).sort(function (a, b) {
+      return Number(a.spellLevel || 0) - Number(b.spellLevel || 0) || a.name.localeCompare(b.name);
+    });
+    var levels = Array.from(new Set(spells.map(function (spell) { return Number(spell.spellLevel || 0); })));
+    levels.forEach(function (level) {
+      var matchingSlots = slots.filter(function (slot) { return Number(slot.level) === level; });
+      var slotDetail = matchingSlots.map(function (slot) { return slot.value + "/" + slot.max + (slot.pact ? " pact" : " slots"); }).join(" · ");
+      fragment.appendChild(sectionHeading(level === 0 ? "Cantrips" : "Level " + level, level === 0 ? "At will" : slotDetail || "Spell level"));
+      var list = create("div", "action-list spell-level-list");
+      spells.filter(function (spell) { return Number(spell.spellLevel || 0) === level; }).forEach(function (spell) {
+        list.appendChild(itemRow(spell));
+      });
+      fragment.appendChild(list);
+    });
+    if (!spells.length) fragment.appendChild(emptyState("No spells are available for this character yet."));
     elements.viewContent.replaceChildren(fragment);
   }
 
@@ -1106,6 +1153,7 @@
     options = options || {};
     if (!state.snapshot) return false;
     if (!state.bridgeOnline) {
+      if (options.silentOffline) return false;
       showToast(options.quiet ? "The roll stays in your phone history, but Foundry is asleep so the sheet could not be updated." : "Foundry is sleeping. Saved sheets and journals still work; sheet edits resume when the GM opens the world.", 5600);
       return false;
     }
@@ -1119,7 +1167,7 @@
         state.bridgeOnline = false;
         updateStatus();
       }
-      showToast(result.data.error || "Foundry could not receive that action yet.", 5000);
+      if (!options.quiet) showToast(result.data.error || "Foundry could not receive that action yet.", 5000);
       return false;
     }
     if (!options.quiet) showToast("Waiting for Foundry to finish…", 14000);
@@ -1133,16 +1181,16 @@
       }
       if (status.data.status === "completed") {
         if (!options.quiet) showToast(success, 3400);
-        window.setTimeout(function () { loadState(true); }, 600);
+        if (!options.skipRefresh) window.setTimeout(function () { loadState(true); }, 1500);
         return true;
       }
       if (status.data.status === "failed") {
-        showToast(status.data.result && status.data.result.error ? status.data.result.error : "Foundry could not complete that action.", 6000);
+        if (!options.quiet) showToast(status.data.result && status.data.result.error ? status.data.result.error : "Foundry could not complete that action.", 6000);
         return false;
       }
     }
     if (!options.quiet) showToast("The action is queued, but Foundry is taking longer than expected. Check the table before trying it again.", 6500);
-    window.setTimeout(function () { loadState(true); }, 1200);
+    if (!options.skipRefresh) window.setTimeout(function () { loadState(true); }, 1200);
     return true;
   }
 
@@ -1171,6 +1219,7 @@
     var terms = normalized.match(/[+-]?(?:\d*d\d+|\d+)/gi) || [];
     var total = 0;
     var details = [];
+    var rolledDice = [];
     for (var index = 0; index < terms.length; index += 1) {
       var term = terms[index];
       var sign = term.charAt(0) === "-" ? -1 : 1;
@@ -1181,7 +1230,11 @@
         var sides = Number(parts[1]);
         if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) return null;
         var dice = [];
-        for (var die = 0; die < count; die += 1) dice.push(randomDie(sides));
+        for (var die = 0; die < count; die += 1) {
+          var dieResult = randomDie(sides);
+          dice.push(dieResult);
+          rolledDice.push({ sides: sides, result: dieResult });
+        }
         var subtotal = dice.reduce(function (sum, value) { return sum + value; }, 0);
         total += sign * subtotal;
         details.push((sign < 0 ? "−" : details.length ? "+" : "") + "[" + dice.join(", ") + "]");
@@ -1192,7 +1245,7 @@
         details.push((sign < 0 ? "−" : "+") + constant);
       }
     }
-    return { total: total, breakdown: details.join(" ").replace(/^\+/, "") };
+    return { total: total, breakdown: details.join(" ").replace(/^\+/, ""), dice: rolledDice };
   }
 
   function rollLocalFormula(label, formula, kind) {
@@ -1212,12 +1265,19 @@
       kind: kind || "roll",
       total: result.total,
       breakdown: result.breakdown,
+      dice: result.dice,
       timestamp: Date.now()
     };
     writeLocalRoll(roll);
     showRollResult(roll);
+    mirrorRollToDiceSoNice(roll);
     if (state.tab === "chat") renderChat();
     return roll;
+  }
+
+  function mirrorRollToDiceSoNice(roll) {
+    if (!roll.dice || !roll.dice.length) return;
+    void sendAction("showDice", { dice: roll.dice }, "", { quiet: true, silentOffline: true, skipRefresh: true });
   }
 
   function readLocalRolls() {
