@@ -51,7 +51,16 @@ export interface ChronicleActor {
     passive: number;
     proficiency: number;
   }>;
-  resources: Array<{ key: string; label: string; value: number; max: number }>;
+  resources: Array<{
+    key: string;
+    label: string;
+    value: number;
+    max: number;
+    spent?: number;
+    kind?: "actor" | "item" | "activity";
+    itemUuid?: string;
+    activityId?: string;
+  }>;
   spellSlots?: Array<{
     key: string;
     label: string;
@@ -64,7 +73,7 @@ export interface ChronicleActor {
     uuid: string;
     name: string;
     type: string;
-    category?: "action" | "spell" | "feat";
+    category?: "action" | "spell" | "feat" | "item";
     subtitle?: string;
     description?: string;
     image?: string;
@@ -108,6 +117,21 @@ export interface ChronicleActor {
           kind: "attack" | "damage" | "healing" | "item";
         }>;
       }>;
+      consumptionByOption?: Array<{
+        slotKey?: string;
+        level: number;
+        entries: Array<{
+          type: string;
+          label: string;
+          hint?: string;
+          value?: number;
+          warning?: boolean;
+        }>;
+      }>;
+      automation?: {
+        providers: string[];
+        requiresFoundryWorkflow: boolean;
+      };
       canConsume?: boolean;
       requiresSpellSlot?: boolean;
     }>;
@@ -155,6 +179,7 @@ export interface ChronicleShopItem {
 export interface ChronicleSnapshot {
   campaign: { id: string; name: string; edition: Edition };
   actor: ChronicleActor;
+  integrations?: Array<{ id: string; label: string; active: boolean; version?: string }>;
   journals: ChronicleJournal[];
   messages: ChronicleMessage[];
   shop: ChronicleShopItem[];

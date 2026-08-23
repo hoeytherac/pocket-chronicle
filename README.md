@@ -18,14 +18,15 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - portrait-first phone layout with a clear blue, restrained fantasy style
 - portrait and identity details for species, background, class, subclass, alignment, size, and languages
 - character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
-- dedicated Spells tab grouped by cantrips and spell level, with live Foundry slot counts and a selectable casting slot
-- separate Actions and Feats shelves with tap-to-read item details
-- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, with animated dice and device roll history
+- dedicated Spells tab grouped by cantrips and spell level, with jewel-like live slot meters and a selectable casting slot
+- separate Actions, Feats, and Items shelves with tap-to-read details and no character-sheet item limit
+- activity-aware local phone dice for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, with lazy-loaded 3D physics dice and device roll history
 - separate positive-number controls for damage and healing, sent as one Foundry update
 - spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
-- chosen spell slots and limited-use charges are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
+- chosen spell slots, activity uses, item uses, quantities, and linked native resources are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
+- active Midi-QOL, CPR, CAT, and DAE integrations are identified without launching their target/canvas workflows from a local phone roll
 - app-native dice are the primary roll display, with optional Dice So Nice mirroring in Foundry through its official no-chat API
-- D&D 5e damage now uses the system HP handler so temporary HP is spent first and healing restores current HP correctly
+- phone HP edits update temporary and current HP directly, so damage/healing signs stay correct without starting Midi-QOL concentration automation
 - GM-shared journal entries and images
 - table chat plus local d4/d6/d8/d10/d12/d20 rolls
 - GM-curated shop requests

@@ -47,7 +47,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0100.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0110.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
@@ -74,12 +74,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=19"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=20"/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=7/);
-  assert.match(mobile, /mobile\.css\?v=7/);
+  assert.match(mobile, /mobile\.js\?v=8/);
+  assert.match(mobile, /mobile\.css\?v=8/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /Foundry companion/i);
   assert.doesNotMatch(mobile, /butterfly/i);
@@ -99,6 +99,11 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /rollsByLevel/);
   assert.match(mobileScript, /slotKey/);
   assert.match(mobileScript, /phone-dice-tray/);
+  assert.match(mobileScript, /vendor\/dice-box\/dice-box\.es\.min\.js/);
+  assert.match(mobileScript, /rollPhysicalDice/);
+  assert.match(mobileScript, /consumptionByOption/);
+  assert.match(mobileScript, /Native rolls and charges work here/);
+  assert.match(mobileScript, /\["action", "Actions"\], \["feat", "Feats"\], \["item", "Items"\]/);
   assert.match(mobileScript, /parseExpression/);
   assert.match(mobileScript, /renderSpells/);
   assert.match(mobileScript, /Spell slots/);
@@ -127,6 +132,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /GM-authored roll card/);
   assert.match(bridge, /recordDeathSave/);
   assert.match(bridge, /consumeItem/);
+  assert.match(bridge, /activity\.consume/);
+  assert.doesNotMatch(bridge, /await activity\.use/);
+  assert.match(bridge, /actorResourceTrackers/);
+  assert.match(bridge, /consumptionByOption/);
+  assert.match(bridge, /moduleIntegrations/);
+  assert.doesNotMatch(bridge, /slice\(0, 160\)/);
   assert.match(bridge, /subsequentActions: false/);
   assert.match(bridge, /create: false/);
   assert.match(bridge, /itemLocalRolls/);
@@ -135,7 +146,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /getAttackData/);
   assert.match(bridge, /activityId/);
   assert.match(bridge, /slotKey/);
-  assert.match(bridge, /actor\.applyDamage/);
+  assert.doesNotMatch(bridge, /actor\.applyDamage/);
+  assert.match(bridge, /pocketChronicle: true/);
   assert.match(bridge, /actorSpellSlots/);
   assert.match(bridge, /game\.dice3d\.show/);
   assert.match(bridge, /dice-so-nice/);
@@ -145,8 +157,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(bridge, /Check Requests \/ Resets/);
   assert.match(bridge, /Approve Reset/);
-  assert.match(compatibilityLoader, /bridge-v0100\.js/);
-  assert.match(moduleManifest, /bridge-v0100\.js/);
+  assert.match(compatibilityLoader, /bridge-v0110\.js/);
+  assert.match(moduleManifest, /bridge-v0110\.js/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

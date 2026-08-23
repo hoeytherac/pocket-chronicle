@@ -778,11 +778,29 @@
     if (!(actor.skills || []).length) skills.appendChild(emptyState("Skills will appear after the updated Foundry module syncs."));
     fragment.appendChild(skills);
 
+    var resources = actor.resources || [];
+    if (resources.length) {
+      fragment.appendChild(sectionHeading("Resources", resources.length + " linked pools"));
+      var resourceGrid = create("div", "resource-grid");
+      resources.forEach(function (resource) {
+        var resourceCard = create("section", "resource-card");
+        var resourceCopy = create("div", "resource-copy");
+        resourceCopy.appendChild(create("strong", "", resource.label));
+        resourceCopy.appendChild(create("small", "", resource.kind === "activity" ? "Activity uses" : resource.kind === "item" ? "Item uses" : "Character resource"));
+        resourceCard.appendChild(resourceCopy);
+        resourceCard.appendChild(create("span", "resource-value", resource.value + " / " + resource.max));
+        var meter = create("span", "resource-meter");
+        meter.style.setProperty("--resource-fill", Math.max(0, Math.min(100, (Number(resource.value || 0) / Math.max(1, Number(resource.max || 1))) * 100)) + "%");
+        resourceCard.appendChild(meter);
+        resourceGrid.appendChild(resourceCard);
+      });
+      fragment.appendChild(resourceGrid);
+    }
+
     var characterFeatures = (actor.actions || []).filter(function (item) { return (item.category || item.type) !== "spell"; });
     fragment.appendChild(sectionHeading("Character features", characterFeatures.length + " entries"));
     var categories = create("div", "sheet-tabs");
-    categories.classList.add("two-tabs");
-    [["action", "Actions"], ["feat", "Feats"]].forEach(function (entry) {
+    [["action", "Actions"], ["feat", "Feats"], ["item", "Items"]].forEach(function (entry) {
       var count = (actor.actions || []).filter(function (item) { return (item.category || (item.type === "spell" ? "spell" : item.type === "feat" ? "feat" : "action")) === entry[0]; }).length;
       var tab = create("button", state.sheetCategory === entry[0] ? "active" : "", entry[1] + " " + count);
       tab.type = "button";
@@ -879,11 +897,24 @@
     fragment.appendChild(sectionHeading("Spell slots", slots.length ? "Updates after each cast" : "No slot pool"));
     var slotGrid = create("div", "spell-slot-grid");
     slots.forEach(function (slot) {
-      var card = create("section", "spell-slot-card");
-      card.appendChild(create("small", "", slot.label));
-      card.appendChild(create("strong", "", slot.value + " / " + slot.max));
+      var card = create("section", "spell-slot-card" + (slot.value > 0 ? " slot-ready" : " slot-empty"));
+      var slotHead = create("div", "spell-slot-head");
+      var emblem = create("span", "slot-level-emblem", slot.pact ? "P" : String(slot.level));
+      emblem.setAttribute("aria-hidden", "true");
+      slotHead.appendChild(emblem);
+      var slotCopy = create("span", "spell-slot-copy");
+      slotCopy.appendChild(create("small", "", slot.pact ? "Pact magic" : "Spell level"));
+      slotCopy.appendChild(create("strong", "", slot.pact ? "Level " + slot.level : "Level " + slot.level));
+      slotHead.appendChild(slotCopy);
+      slotHead.appendChild(create("span", "slot-count", slot.value + "/" + slot.max));
+      card.appendChild(slotHead);
       var pips = create("span", "slot-pips");
-      for (var index = 0; index < slot.max; index += 1) pips.appendChild(create("i", index < slot.value ? "available" : "spent"));
+      pips.setAttribute("aria-label", slot.value + " of " + slot.max + " spell slots available");
+      for (var index = 0; index < slot.max; index += 1) {
+        var pip = create("i", index < slot.value ? "available" : "spent");
+        pip.appendChild(create("b", "", "✦"));
+        pips.appendChild(pip);
+      }
       card.appendChild(pips);
       slotGrid.appendChild(card);
     });
@@ -1229,7 +1260,7 @@
     return Math.floor(Math.random() * sides) + 1;
   }
 
-  function evaluateLocalFormula(formula) {
+  function evaluateLocalFormula(formula, suppliedDice) {
     var normalized = String(formula || "").toLowerCase()
       .replace(/\[[^\]]*]/g, "")
       .replace(/math\.(floor|ceil|round|abs|min|max)/g, "$1")
@@ -1262,6 +1293,7 @@
 
     var rolledDice = [];
     var diceDetails = [];
+    var suppliedPosition = 0;
     var position = 0;
 
     function peek(type) { return tokens[position] && tokens[position].type === type; }
@@ -1280,7 +1312,14 @@
       var select = Number(match[4] || 0);
       if (!Number.isInteger(count) || !Number.isInteger(sides) || count < 1 || count > 100 || sides < 2 || sides > 1000) throw new Error("dice");
       var results = [];
-      for (var die = 0; die < count; die += 1) results.push({ index: die, result: randomDie(sides), kept: true });
+      for (var die = 0; die < count; die += 1) {
+        var supplied = suppliedDice && suppliedDice[suppliedPosition];
+        var result = supplied && Number(supplied.sides) === sides && Number(supplied.result) >= 1 && Number(supplied.result) <= sides
+          ? Number(supplied.result)
+          : randomDie(sides);
+        suppliedPosition += 1;
+        results.push({ index: die, result: result, kept: true });
+      }
       if (mode) {
         var ordered = results.slice().sort(function (a, b) { return a.result - b.result || a.index - b.index; });
         var keep = new Set();
@@ -1354,8 +1393,123 @@
     } catch { return null; }
   }
 
-  function rollLocalFormula(label, formula, kind) {
-    var result = evaluateLocalFormula(formula);
+  function diceNotationGroups(formula) {
+    var source = String(formula || "").toLowerCase();
+    var pattern = /(\d*)d(\d+)(?:(?:kh|kl|dh|dl)\d+)?/g;
+    var groups = [];
+    var match;
+    var total = 0;
+    while ((match = pattern.exec(source))) {
+      var qty = Number(match[1] || 1);
+      var sides = Number(match[2]);
+      if (!Number.isInteger(qty) || !Number.isInteger(sides) || qty < 1 || sides < 2) return [];
+      total += qty;
+      groups.push({ qty: qty, sides: sides, groupId: groups.length });
+    }
+    return total <= 30 ? groups : [];
+  }
+
+  var diceBoxPromise = null;
+  var diceBoxInstance = null;
+
+  function physicalDiceLayer() {
+    var layer = document.getElementById("physics-dice-layer");
+    if (!layer) {
+      layer = create("div", "physics-dice-layer");
+      layer.id = "physics-dice-layer";
+      layer.setAttribute("aria-hidden", "true");
+      document.body.appendChild(layer);
+    }
+    return layer;
+  }
+
+  async function getDiceBox() {
+    if (diceBoxInstance) return diceBoxInstance;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
+    if (!diceBoxPromise) {
+      physicalDiceLayer();
+      diceBoxPromise = import("/vendor/dice-box/dice-box.es.min.js").then(async function (module) {
+        var DiceBox = module.default;
+        var box = new DiceBox({
+          container: "#physics-dice-layer",
+          assetPath: "/vendor/dice-box/assets/",
+          theme: "default",
+          themeColor: "#7faed2",
+          enableShadows: true,
+          shadowTransparency: 0.78,
+          lightIntensity: 0.72,
+          offscreen: true,
+          scale: 5,
+          delay: 65
+        });
+        await box.init();
+        diceBoxInstance = box;
+        return box;
+      }).catch(function (error) {
+        console.warn("Pocket Chronicle 3D dice are unavailable; using the lightweight roller.", error);
+        diceBoxPromise = null;
+        return null;
+      });
+    }
+    return diceBoxPromise;
+  }
+
+  async function rollPhysicalDice(formula) {
+    var groups = diceNotationGroups(formula);
+    if (!groups.length) return null;
+    var box = await getDiceBox();
+    if (!box) return null;
+    var layer = physicalDiceLayer();
+    layer.classList.add("active");
+    try {
+      var results = await box.roll(groups, { theme: "default", themeColor: "#7faed2" });
+      var supplied = [];
+      groups.forEach(function (group) {
+        (results || []).filter(function (die) { return Number(die.groupId) === Number(group.groupId); })
+          .sort(function (a, b) { return Number(a.rollId) - Number(b.rollId); })
+          .forEach(function (die) { supplied.push({ sides: Number(group.sides), result: Number(die.value) }); });
+      });
+      return supplied.length === groups.reduce(function (sum, group) { return sum + group.qty; }, 0) ? supplied : null;
+    } catch (error) {
+      console.warn("Pocket Chronicle used its lightweight dice fallback.", error);
+      return null;
+    } finally {
+      window.setTimeout(function () { layer.classList.remove("active"); }, 180);
+    }
+  }
+
+  function showRollPreparing(label) {
+    var old = document.getElementById("roll-result-overlay");
+    if (old) old.remove();
+    var overlay = create("div", "roll-overlay");
+    overlay.id = "roll-result-overlay";
+    overlay.setAttribute("role", "status");
+    var scrim = create("span", "roll-scrim");
+    var card = create("section", "roll-result-card preparing");
+    card.appendChild(create("p", "eyebrow", "Physics dice"));
+    card.appendChild(create("h2", "", label));
+    var tray = create("div", "phone-dice-tray");
+    tray.appendChild(create("span", "roll-preparing-mark"));
+    card.appendChild(tray);
+    card.appendChild(create("small", "roll-result-note", "Preparing your dice…"));
+    overlay.appendChild(scrim);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+  }
+
+  async function rollLocalFormula(label, formula, kind) {
+    var test = evaluateLocalFormula(formula);
+    if (!test) {
+      showToast("That roll formula is not available on this phone yet.", 4200);
+      return null;
+    }
+    var groups = diceNotationGroups(formula);
+    var suppliedDice = null;
+    if (groups.length) {
+      showRollPreparing(label || formula);
+      suppliedDice = await rollPhysicalDice(formula);
+    }
+    var result = suppliedDice ? evaluateLocalFormula(formula, suppliedDice) : test;
     if (!result) {
       showToast("That roll formula is not available on this phone yet.", 4200);
       return null;
@@ -1375,7 +1529,7 @@
       timestamp: Date.now()
     };
     writeLocalRoll(roll);
-    showRollResult(roll);
+    showRollResult(roll, Boolean(suppliedDice));
     mirrorRollToDiceSoNice(roll);
     if (state.tab === "chat") renderChat();
     return roll;
@@ -1404,11 +1558,11 @@
   }
 
   var rollCloseTimer = 0;
-  function showRollResult(roll) {
+  function showRollResult(roll, usedPhysics) {
     var old = document.getElementById("roll-result-overlay");
     if (old) old.remove();
     window.clearTimeout(rollCloseTimer);
-    var overlay = create("div", "roll-overlay rolling");
+    var overlay = create("div", "roll-overlay" + (usedPhysics ? "" : " rolling"));
     overlay.id = "roll-result-overlay";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-label", roll.label + ": " + roll.total);
@@ -1483,6 +1637,14 @@
       }
       if (facts.childNodes.length) card.appendChild(facts);
       if (activity.description) card.appendChild(create("p", "activity-description", activity.description));
+      if (activity.automation && (activity.automation.providers || []).length) {
+        var automation = create("div", "automation-note");
+        var badges = create("span", "automation-badges");
+        (activity.automation.providers || []).forEach(function (provider) { badges.appendChild(create("i", "", provider)); });
+        automation.appendChild(badges);
+        automation.appendChild(create("small", "", "Native rolls and charges work here. Targeted automation continues in Foundry."));
+        card.appendChild(automation);
+      }
 
       var castOptions = activity.castOptions || [];
       var castSelect = null;
@@ -1508,6 +1670,20 @@
         activityActions.replaceChildren();
         var selectedOption = castOptions.length ? castOptions[Number(castSelect ? castSelect.value : 0)] : { level: Number(item.spellLevel || 0), slotKey: "" };
         var levelData = (activity.rollsByLevel || []).find(function (entry) { return Number(entry.level) === Number(selectedOption.level); }) || (activity.rollsByLevel || [])[0];
+        var costData = (activity.consumptionByOption || []).find(function (entry) {
+          return String(entry.slotKey || "") === String(selectedOption.slotKey || "") && Number(entry.level) === Number(selectedOption.level);
+        }) || (activity.consumptionByOption || [])[0];
+        if (costData && (costData.entries || []).length) {
+          var costs = create("div", "activity-costs");
+          costs.appendChild(create("small", "activity-cost-title", "This use spends"));
+          (costData.entries || []).forEach(function (entry) {
+            var cost = create("span", "activity-cost" + (entry.warning ? " warning" : ""));
+            cost.appendChild(create("strong", "", (entry.value ? entry.value + " × " : "") + entry.label));
+            if (entry.hint) cost.appendChild(create("small", "", entry.hint));
+            costs.appendChild(cost);
+          });
+          activityActions.appendChild(costs);
+        }
         (levelData && levelData.rolls || []).forEach(function (roll) {
           var rollButton = create("button", "secondary-button full-button", "Roll " + roll.label + " · " + roll.formula);
           rollButton.type = "button";

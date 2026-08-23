@@ -306,6 +306,7 @@ function finiteNumber(...values) {
 function itemCategory(item) {
   if (item.type === "spell") return "spell";
   if (item.type === "feat") return "feat";
+  if (["consumable", "equipment", "tool", "loot", "container", "backpack"].includes(item.type)) return "item";
   return "action";
 }
 
@@ -456,7 +457,7 @@ function activityRollsAtLevel(item, activity, castLevel) {
   const seen = new Set();
   const add = (label, formula, kind) => {
     const normalized = resolvedRollFormula(formula, null, rollItem);
-    if (!normalized || !/d\d+/i.test(normalized) || seen.has(`${kind}:${normalized}`)) return;
+    if (!normalized || normalized.includes("@") || !/[0-9]/.test(normalized) || seen.has(`${kind}:${normalized}`)) return;
     seen.add(`${kind}:${normalized}`);
     rolls.push({ key: `${rollActivity.id || rollActivity._id}-${kind}-${rolls.length + 1}`, label, formula: normalized, kind });
   };
@@ -470,6 +471,24 @@ function activityRollsAtLevel(item, activity, castLevel) {
     } catch { /* Fall back to the prepared to-hit label. */ }
     if (!formula) formula = attackFormula(rollActivity.labels?.toHit || rollActivity.labels?.modifier, rollItem);
     add("Attack", formula || "1d20", "attack");
+  }
+
+  if (rollActivity.type === "check") {
+    const associated = collectionValues(rollActivity.check?.associated);
+    const actorSystem = rollItem.parent?.system || {};
+    for (const key of associated) {
+      const skill = actorSystem.skills?.[key];
+      if (skill) {
+        const modifier = finiteNumber(skill.total, skill.mod);
+        add(localized(CONFIG.DND5E?.skills?.[key], String(key).toUpperCase()), `1d20${modifier >= 0 ? "+" : ""}${modifier}`, "item");
+        continue;
+      }
+      const ability = actorSystem.abilities?.[key];
+      if (ability) {
+        const modifier = finiteNumber(ability.mod);
+        add(`${localized(CONFIG.DND5E?.abilities?.[key], String(key).toUpperCase())} check`, `1d20${modifier >= 0 ? "+" : ""}${modifier}`, "item");
+      }
+    }
   }
 
   try {
@@ -509,6 +528,94 @@ function activityConsumesResources(item, activity) {
   return collectionValues(activity.consumption?.targets).length > 0;
 }
 
+function consumptionUsageConfig(item, activity, { slotKey = "", castLevel } = {}) {
+  const baseLevel = item.type === "spell" ? Math.max(0, Number(item.system?.level || 0)) : 0;
+  const resolvedLevel = Math.max(baseLevel, Number(castLevel ?? baseLevel));
+  const input = {
+    create: false,
+    consume: {
+      action: false,
+      resources: true,
+      spellSlot: Boolean(slotKey),
+    },
+    scaling: Math.max(0, resolvedLevel - baseLevel),
+    concentration: { begin: false },
+    subsequentActions: false,
+    ...(slotKey ? { spell: { slot: slotKey } } : {}),
+  };
+  try {
+    const prepared = activity?._prepareUsageConfig?.(input);
+    if (prepared) {
+      prepared.create = false;
+      prepared.consume = { ...(prepared.consume || {}), action: false, resources: true, spellSlot: Boolean(slotKey) };
+      prepared.concentration = { begin: false };
+      prepared.subsequentActions = false;
+      return prepared;
+    }
+  } catch (error) {
+    console.debug(`${MODULE_ID} | Using the standard activity consumption configuration`, error);
+  }
+  return input;
+}
+
+function consumptionPreview(item, activity, castOption) {
+  if (!activity) return [];
+  const config = consumptionUsageConfig(item, activity, castOption);
+  const entries = [];
+  for (const target of collectionValues(activity.consumption?.targets)) {
+    let labels = null;
+    try { labels = target.getConsumptionLabels?.(config, { consumed: true }); }
+    catch { /* Fall back to the raw target metadata. */ }
+    const label = plainText(labels?.label || labels?.name || target.label || target.target || target.type || "Resource");
+    const hint = plainText(labels?.hint || labels?.subtitle || "");
+    const value = finiteNumber(labels?.value, target.value, target.amount);
+    entries.push({
+      type: String(target.type || "resource"),
+      label: label || "Linked resource",
+      hint,
+      value,
+      warning: Boolean(labels?.warning || labels?.warn),
+    });
+  }
+  if (castOption?.slotKey) {
+    entries.unshift({
+      type: "spellSlot",
+      label: castOption.label || `Level ${castOption.level} spell slot`,
+      hint: `${finiteNumber(castOption.value)}/${finiteNumber(castOption.max)} available`,
+      value: 1,
+      warning: finiteNumber(castOption.value) < 1,
+    });
+  }
+  return entries;
+}
+
+function activeIntegration(id, label) {
+  const moduleRecord = game.modules.get(id);
+  return { id, label, active: Boolean(moduleRecord?.active), version: String(moduleRecord?.version || "") };
+}
+
+function moduleIntegrations() {
+  return [
+    activeIntegration("midi-qol", "Midi-QOL"),
+    activeIntegration("chris-premades", "CPR"),
+    activeIntegration("cat", "CAT"),
+    activeIntegration("dae", "DAE"),
+  ];
+}
+
+function activityAutomation(item, activity) {
+  const flags = { ...(item.flags || {}), ...(activity.flags || {}) };
+  const providers = [];
+  if (game.modules.get("midi-qol")?.active && (flags["midi-qol"] || /^midi\b/i.test(String(activity.name || "")))) providers.push("Midi-QOL");
+  if (game.modules.get("chris-premades")?.active && (flags["chris-premades"] || flags.chrisPremades)) providers.push("CPR");
+  if (game.modules.get("cat")?.active && (flags.cat || flags["coven-automation-toolkit"])) providers.push("CAT");
+  if (game.modules.get("dae")?.active && flags.dae) providers.push("DAE");
+  return {
+    providers,
+    requiresFoundryWorkflow: providers.length > 0 || ["cast", "summon", "enchant", "transform"].includes(String(activity.type || "")),
+  };
+}
+
 function itemActivityData(item, spellSlots) {
   return collectionValues(item.system?.activities).map((activity) => {
     const castOptions = activityCastOptions(item, activity, spellSlots);
@@ -526,6 +633,12 @@ function itemActivityData(item, spellSlots) {
       save: activitySaveData(activity),
       castOptions,
       rollsByLevel: levels.map((level) => ({ level, rolls: activityRollsAtLevel(item, activity, level) })),
+      consumptionByOption: castOptions.map((option) => ({
+        slotKey: option.slotKey,
+        level: option.level,
+        entries: consumptionPreview(item, activity, option),
+      })),
+      automation: activityAutomation(item, activity),
       canConsume: activityConsumesResources(item, activity),
       requiresSpellSlot: Boolean(item.type === "spell" && activity.requiresSpellSlot && activity.consumption?.spellSlot !== false),
     };
@@ -561,6 +674,45 @@ function actorSpellSlots(system) {
       pact,
     }];
   }).sort((a, b) => a.level - b.level || Number(a.pact) - Number(b.pact));
+}
+
+function usesTracker(uses) {
+  const max = Math.max(0, finiteNumber(uses?.max));
+  if (!max) return null;
+  const spent = Math.max(0, finiteNumber(uses?.spent));
+  const value = Math.max(0, Math.min(max, finiteNumber(uses?.value, max - spent)));
+  return { value, max, spent: Math.max(spent, max - value) };
+}
+
+function actorResourceTrackers(actor) {
+  const trackers = [];
+  const seen = new Set();
+  const add = (tracker) => {
+    if (!tracker?.key || !tracker.max || seen.has(tracker.key)) return;
+    seen.add(tracker.key);
+    trackers.push(tracker);
+  };
+  for (const [key, value] of Object.entries(actor.system?.resources || {})) {
+    if (!value?.label || !Number(value.max || 0)) continue;
+    add({ key: `actor:${key}`, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0), kind: "actor" });
+  }
+  for (const item of actor.items) {
+    const itemUses = usesTracker(item.system?.uses);
+    if (itemUses) add({ key: `item:${item.id}`, label: item.name, ...itemUses, kind: "item", itemUuid: item.uuid });
+    for (const activity of collectionValues(item.system?.activities)) {
+      const activityUses = usesTracker(activity.uses);
+      if (!activityUses) continue;
+      add({
+        key: `activity:${item.id}:${activity.id || activity._id}`,
+        label: `${item.name} · ${activity.name || activityTypeLabel(activity)}`,
+        ...activityUses,
+        kind: "activity",
+        itemUuid: item.uuid,
+        activityId: String(activity.id || activity._id),
+      });
+    }
+  }
+  return trackers.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 async function buildSnapshot(actor) {
@@ -605,7 +757,11 @@ async function buildSnapshot(actor) {
   const species = speciesItem?.name || detailText(system.details?.species) || detailText(system.details?.race) || "Adventurer";
   const className = classes.map((item) => item.name).join(" / ") || "Adventurer";
   const spellSlots = actorSpellSlots(system);
-  const actionItems = actor.items.filter((item) => ["weapon", "spell", "feat", "consumable", "equipment", "tool"].includes(item.type));
+  const identityTypes = new Set(["class", "subclass", "background", "species", "race"]);
+  const actionItems = actor.items.filter((item) => !identityTypes.has(item.type) && (
+    collectionValues(item.system?.activities).length > 0
+    || ["weapon", "spell", "feat", "consumable", "equipment", "tool", "loot", "container", "backpack"].includes(item.type)
+  ));
   const journals = game.journal.filter((journal) => journal.getFlag(MODULE_ID, SHARED_FLAG));
   const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG));
   const messages = game.messages.contents.slice(-25).map((message) => ({
@@ -646,9 +802,9 @@ async function buildSnapshot(actor) {
       abilities,
       saves,
       skills,
-      resources: Object.entries(system.resources || {}).filter(([, value]) => value?.label).map(([key, value]) => ({ key, label: value.label, value: Number(value.value || 0), max: Number(value.max || 0) })),
+      resources: actorResourceTrackers(actor),
       spellSlots,
-      actions: actionItems.slice(0, 160).map((item) => {
+      actions: actionItems.map((item) => {
         const activities = itemActivityData(item, spellSlots);
         return {
           uuid: item.uuid,
@@ -668,6 +824,7 @@ async function buildSnapshot(actor) {
       owners: actorOwners(actor),
       biography: plainText(system.details?.biography?.value || system.details?.biography || ""),
     },
+    integrations: moduleIntegrations(),
     journals: await Promise.all(journals.map(async (journal) => {
       const pages = journal.pages?.contents || [];
       const content = pages.map((page) => plainText(page.text?.content || "")).filter(Boolean).join("\n\n");
@@ -707,27 +864,26 @@ async function executeAction(action) {
       speaker: ChatMessage.getSpeaker({ actor }),
       ...(actingUser ? { user: actingUser.id } : {}),
     };
-    const noDialog = { configure: false };
     let result = {};
     switch (action.kind) {
       case "adjustHp": {
         const change = Number(action.payload.amount || 0);
         if (!Number.isFinite(change) || change === 0) throw new Error("Enter a valid damage or healing amount.");
-        if (typeof actor.applyDamage === "function") await actor.applyDamage(-change, { ignore: true });
-        else {
-          const hp = actor.system.attributes.hp || {};
-          const current = Number(hp.value || 0);
-          const max = Math.max(current, Number(hp.max || 0));
-          const temp = Math.max(0, Number(hp.temp || 0));
-          if (change < 0) {
-            const damage = Math.abs(change);
-            const tempSpent = Math.min(temp, damage);
-            await actor.update({
-              "system.attributes.hp.temp": temp - tempSpent,
-              "system.attributes.hp.value": Math.max(0, current - (damage - tempSpent)),
-            });
-          } else await actor.update({ "system.attributes.hp.value": Math.min(max, current + change) });
-        }
+        const hp = actor.system.attributes.hp || {};
+        const current = Number(hp.value || 0);
+        const max = Math.max(current, Number(hp.max || 0));
+        const temp = Math.max(0, Number(hp.temp || 0));
+        const hpUpdate = {};
+        if (change < 0) {
+          const damage = Math.abs(change);
+          const tempSpent = Math.min(temp, damage);
+          hpUpdate["system.attributes.hp.temp"] = temp - tempSpent;
+          hpUpdate["system.attributes.hp.value"] = Math.max(0, current - (damage - tempSpent));
+        } else hpUpdate["system.attributes.hp.value"] = Math.min(max, current + change);
+        // Pocket Chronicle adjusts only the two HP fields. It deliberately does
+        // not call dnd5e.applyDamage or start a Midi-QOL workflow, so a phone HP
+        // edit never creates an automated concentration check.
+        await actor.update(hpUpdate, { pocketChronicle: true });
         result = {
           value: Number(actor.system.attributes.hp.value || 0),
           temp: Number(actor.system.attributes.hp.temp || 0),
@@ -750,21 +906,21 @@ async function executeAction(action) {
           if (slot.value < 1) throw new Error(`${slot.label} has no remaining spell slots.`);
           castLevel = slot.level;
         }
-        const scaling = Math.max(0, castLevel - Math.max(0, Number(item.system?.level || 0)));
-        const usageConfig = {
-          event: { shiftKey: true },
-          create: false,
-          consume: true,
-          subsequentActions: false,
-          scaling,
-          concentration: { begin: false },
-          ...(slotKey ? { spell: { slot: slotKey } } : {}),
-        };
-        const usage = activity
-          ? await activity.use?.(usageConfig, noDialog, { create: false, data: messageData })
-          : await item.use?.(usageConfig, noDialog, { create: false, data: messageData });
-        const hasActivities = activities.length > 0;
-        if (hasActivities && !usage) throw new Error(`${item.name} could not spend its resource. Check its charges, spell slots, or required choices in Foundry.`);
+        const usageConfig = consumptionUsageConfig(item, activity, { slotKey, castLevel });
+        if (activity?.consume) {
+          const consumed = await activity.consume(usageConfig, {
+            create: false,
+            data: { ...messageData, flags: { dnd5e: activity.messageFlags || {} } },
+            hasConsumption: true,
+          });
+          if (consumed === false) throw new Error(`${item.name} could not spend its linked resource. Check its remaining uses, quantity, materials, or spell slots in Foundry.`);
+        } else if (Number(item.system?.uses?.max || 0) > 0) {
+          const uses = usesTracker(item.system.uses);
+          if (!uses || uses.value < 1) throw new Error(`${item.name} has no uses remaining.`);
+          await item.update({ "system.uses.spent": Math.min(uses.max, uses.spent + 1) });
+        } else if (item.type === "consumable" && Number(item.system?.quantity || 0) > 0) {
+          await item.update({ "system.quantity": Math.max(0, Number(item.system.quantity) - 1) });
+        } else throw new Error(`${item.name} does not expose a spendable native resource.`);
         result = { item: item.name, consumed: true, activity: activity?.name, castLevel, slotKey };
         break;
       }
