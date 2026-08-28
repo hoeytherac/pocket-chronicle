@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.14.3 */
+/* Pocket Chronicle Bridge v0.14.4 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -67,7 +67,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.3",
+    version: "0.14.4",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -1499,7 +1499,7 @@ function builtInHitDice(actor) {
 }
 
 function builtInRestSnapshot(actor) {
-  const inventory = actor.items.flatMap((item) => {
+  const inventory = collectionValues(actor.items).flatMap((item) => {
     const key = restRationsFlag(item, "provisionKey");
     const quantity = Math.max(0, Number(item.system?.quantity || 0));
     if (!key || quantity < 1) return [];

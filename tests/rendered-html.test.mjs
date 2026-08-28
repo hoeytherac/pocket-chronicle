@@ -40,7 +40,7 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, mobile, mobileScript, mobileStyle, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, mobileStyle, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, releaseLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
@@ -52,6 +52,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0120.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0144.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/access-requests/route.ts", import.meta.url), "utf8"),
@@ -185,6 +186,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /integratedRestRationsFlags/);
   assert.match(bridge, /restRationsFlag/);
   assert.doesNotMatch(bridge, /getFlag\((?:LEGACY_REST_RATIONS_ID|"pocket-chronicle-rest-rations")/);
+  assert.doesNotMatch(bridge, /actor\.items\.flatMap/);
+  assert.match(bridge, /collectionValues\(actor\.items\)\.flatMap/);
   assert.match(bridge, /Open Shop Manager/);
   assert.doesNotMatch(bridge, /Open Pocket Chat/);
   assert.match(bridge, /currencyTotal/);
@@ -218,9 +221,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(bridge, /Check Requests \/ Resets/);
   assert.match(bridge, /Approve Reset/);
-  assert.match(compatibilityLoader, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.14\.3"/);
+  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.14\.4/);
+  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.14\.4/);
+  assert.match(moduleManifest, /bridge-v0144\.js/);
+  assert.match(moduleManifest, /"version": "0\.14\.4"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);
