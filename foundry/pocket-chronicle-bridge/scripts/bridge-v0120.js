@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.14.0 */
+/* Pocket Chronicle Bridge v0.14.1 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -54,7 +54,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.0",
+    version: "0.14.1",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,

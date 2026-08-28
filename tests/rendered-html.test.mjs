@@ -83,8 +83,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(serviceWorker, /pocket-chronicle-v0140/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=17/);
-  assert.match(mobile, /mobile\.css\?v=17/);
+  assert.match(mobile, /mobile\.js\?v=18/);
+  assert.match(mobile, /mobile\.css\?v=18/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -215,7 +215,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.14\.0"/);
+  assert.match(moduleManifest, /"version": "0\.14\.1"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

@@ -2,7 +2,7 @@
   "id": "pocket-chronicle-bridge",
   "title": "Pocket Chronicle Bridge",
   "description": "A lightweight, GM-controlled bridge between Foundry and the Pocket Chronicle phone app. It does not render a phone interface or load the Scene canvas.",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "authors": [
     {
       "name": "Pocket Chronicle"
