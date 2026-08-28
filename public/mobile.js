@@ -2,6 +2,7 @@
   "use strict";
 
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
+  var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
   var ROLL_STORAGE = "pocket-chronicle-local-rolls";
   var state = {
@@ -17,7 +18,7 @@
     campaignName: "",
     accounts: [],
     selectedAccountId: "",
-    accessRequest: null,
+    accessRequest: readStoredAccessRequest(),
     approvalTimer: 0,
     installPrompt: null,
     refreshTimer: 0,
@@ -61,9 +62,14 @@
       event.preventDefault();
       state.installPrompt = event;
     });
-    window.addEventListener("online", loadState);
+    window.addEventListener("online", function () {
+      if (state.accessRequest) startApprovalPoll();
+      else loadState();
+    });
     document.addEventListener("visibilitychange", function () {
-      if (document.visibilityState === "visible") loadState(true);
+      if (document.visibilityState !== "visible") return;
+      if (state.accessRequest) startApprovalPoll();
+      else loadState(true);
     });
     window.addEventListener("error", function () {
       showToast("Pocket Chronicle hit a screen error. Your campaign data is safe; tap Home to refresh this view.", 6500);
@@ -72,9 +78,10 @@
       showToast("The phone could not finish that request. Check the connection and try once more.", 6500);
     });
 
-    loadState();
+    if (state.accessRequest) showApprovalWaiting();
+    else loadState();
     state.refreshTimer = window.setInterval(function () {
-      if (document.visibilityState === "visible") loadState(true);
+      if (document.visibilityState === "visible" && !state.accessRequest) loadState(true);
     }, 30000);
   }
 
@@ -91,6 +98,22 @@
     state.account = account;
     if (account) window.localStorage.setItem(ACCOUNT_STORAGE, JSON.stringify(account));
     else window.localStorage.removeItem(ACCOUNT_STORAGE);
+  }
+
+  function readStoredAccessRequest() {
+    try {
+      var request = JSON.parse(window.localStorage.getItem(ACCESS_REQUEST_STORAGE) || "null");
+      return request && request.id && request.token ? request : null;
+    } catch {
+      window.localStorage.removeItem(ACCESS_REQUEST_STORAGE);
+      return null;
+    }
+  }
+
+  function setStoredAccessRequest(accessRequest) {
+    state.accessRequest = accessRequest;
+    if (accessRequest) window.localStorage.setItem(ACCESS_REQUEST_STORAGE, JSON.stringify(accessRequest));
+    else window.localStorage.removeItem(ACCESS_REQUEST_STORAGE);
   }
 
   async function api(path, options) {
@@ -114,6 +137,7 @@
   }
 
   async function loadState(silent) {
+    if (state.accessRequest) return;
     var storedActor = window.localStorage.getItem(CHARACTER_STORAGE) || "";
     var path = storedActor ? "/api/state?actorUuid=" + encodeURIComponent(storedActor) : "/api/state";
     if (!silent) showChecking();
@@ -417,8 +441,9 @@
       showAccountPicker("That account is no longer available.");
       return;
     }
-    setStoredAccount({ id: account.id, playerLabel: account.playerLabel, campaignName: state.campaignName });
+    state.account = { id: account.id, playerLabel: account.playerLabel, campaignName: state.campaignName };
     if (account.hasPassword) {
+      setStoredAccount(state.account);
       showSignIn();
       return;
     }
@@ -431,13 +456,13 @@
       showAccountPicker(result.data.error || "That phone request could not be sent.");
       return;
     }
-    state.accessRequest = {
+    setStoredAccessRequest({
       id: result.data.requestId,
       token: result.data.requestToken,
       kind: result.data.requestKind || "first-time",
       playerLabel: result.data.playerLabel,
       campaignName: result.data.campaignName
-    };
+    });
     state.campaignCode = "";
     showApprovalWaiting();
   }
@@ -450,6 +475,11 @@
     }
     var result = await post("/api/sign-in", { accountId: state.account.id, password: password });
     if (!result.ok || !result.data.account) {
+      if (result.data.needsFirstTimeSetup) {
+        setStoredAccount(null);
+        showCampaignConnect("This account has not created its first Pocket Chronicle password yet. Connect it again to finish the two-password setup.");
+        return;
+      }
       showSignIn(result.data.error || "That account could not be signed in.");
       return;
     }
@@ -479,13 +509,13 @@
       showPasswordResetConnect(result.data.error || "That password reset request could not be sent.");
       return;
     }
-    state.accessRequest = {
+    setStoredAccessRequest({
       id: result.data.requestId,
       token: result.data.requestToken,
       kind: "password-reset",
       playerLabel: result.data.playerLabel,
       campaignName: result.data.campaignName
-    };
+    });
     state.campaignCode = "";
     showApprovalWaiting();
   }
@@ -506,8 +536,18 @@
     }
     if (result.ok && (result.data.status === "denied" || result.data.status === "expired")) {
       var message = result.data.status === "denied" ? "The GM denied this request." : "That request expired. Please start again.";
-      state.accessRequest = null;
+      setStoredAccessRequest(null);
       showCampaignConnect(message);
+      return;
+    }
+    if (result.ok && result.data.status === "consumed") {
+      setStoredAccessRequest(null);
+      loadState();
+      return;
+    }
+    if (!result.ok && (result.status === 401 || result.status === 404)) {
+      setStoredAccessRequest(null);
+      showCampaignConnect(result.data.error || "That approval request is no longer available. Please connect again.");
       return;
     }
     state.approvalTimer = window.setTimeout(pollApproval, 2500);
@@ -542,7 +582,7 @@
       return;
     }
     setStoredAccount(result.data.account);
-    state.accessRequest = null;
+    setStoredAccessRequest(null);
     await loadState();
   }
 
@@ -555,7 +595,7 @@
     state.campaignId = "";
     state.campaignCode = "";
     state.accounts = [];
-    state.accessRequest = null;
+    setStoredAccessRequest(null);
     closeSettings();
     showCampaignConnect();
   }

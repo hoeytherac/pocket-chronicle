@@ -3,7 +3,7 @@
   "short_name": "Chronicle",
   "description": "A lightweight Foundry companion for characters, journals, chat, dice, and shopping.",
   "id": "/",
-  "start_url": "/mobile.html?pwa=27",
+  "start_url": "/mobile.html?pwa=28",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],

@@ -31,8 +31,14 @@ export async function POST(request: Request) {
     .limit(1);
 
   const entitled = account && hasProductAccess(account.edition as Edition, account.subscriptionStatus as SubscriptionStatus);
-  if (!account || !entitled || account.campaignStatus !== "active" || !account.credentialHash) {
+  if (!account || !entitled || account.campaignStatus !== "active") {
     return jsonError("That Pocket Chronicle account could not be signed in.", 401);
+  }
+  if (!account.credentialHash) {
+    return Response.json({
+      error: "This account still needs its first Pocket Chronicle password.",
+      needsFirstTimeSetup: true,
+    }, { status: 409 });
   }
   if (!(await verifyPassword(body.password, account.credentialHash))) return jsonError("That password is incorrect.", 401);
 

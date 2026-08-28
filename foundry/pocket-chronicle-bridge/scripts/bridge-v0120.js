@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.13.1 */
+/* Pocket Chronicle Bridge v0.13.2 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -41,7 +41,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.13.1",
+    version: "0.13.2",
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
@@ -114,9 +114,26 @@ function shouldRun() {
   return isActiveBridgeHost() && hasCompleteConfig();
 }
 
+function normalizeRelayUrl(value) {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  try {
+    const relay = new URL(source);
+    relay.hash = "";
+    relay.search = "";
+    relay.pathname = relay.pathname.replace(/\/mobile\.html(?:\/.*)?$/i, "").replace(/\/+$/, "");
+    return `${relay.origin}${relay.pathname}`;
+  } catch {
+    return source
+      .replace(/[?#].*$/, "")
+      .replace(/\/mobile\.html(?:\/.*)?$/i, "")
+      .replace(/\/+$/, "");
+  }
+}
+
 function config() {
   return {
-    relayUrl: String(game.settings.get(MODULE_ID, "relayUrl") || "").replace(/\/$/, ""),
+    relayUrl: normalizeRelayUrl(game.settings.get(MODULE_ID, "relayUrl")),
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || "").trim(),
     campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1"),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || "").trim(),
@@ -1259,8 +1276,20 @@ async function openShopManager() {
 function configureSettingsUi(html) {
   if (!game.user?.isGM) return;
   const root = html instanceof HTMLElement ? html : html?.[0];
-  if (!root || root.querySelector("[data-pocket-chronicle-pair]")) return;
+  if (!root) return;
+  const relayInput = root.querySelector(`[name="${MODULE_ID}.relayUrl"]`);
+  if (relayInput && !relayInput.dataset.pocketChronicleNormalized) {
+    relayInput.dataset.pocketChronicleNormalized = "true";
+    const cleanRelayInput = () => {
+      relayInput.value = normalizeRelayUrl(relayInput.value);
+    };
+    cleanRelayInput();
+    relayInput.addEventListener("change", cleanRelayInput);
+    relayInput.addEventListener("blur", cleanRelayInput);
+  }
+  if (root.querySelector("[data-pocket-chronicle-pair]")) return;
   const codeInput = root.querySelector(`[name="${MODULE_ID}.campaignCode"]`);
+  const campaignIdInput = root.querySelector(`[name="${MODULE_ID}.campaignId"]`);
   const bridgeKeyInput = root.querySelector(`[name="${MODULE_ID}.bridgeKey"]`);
   if (codeInput) {
     codeInput.maxLength = 6;
@@ -1293,7 +1322,24 @@ function configureSettingsUi(html) {
   const syncButton = document.createElement("button");
   syncButton.type = "button";
   syncButton.innerHTML = '<i class="fa-solid fa-key"></i> Save Campaign Code';
-  syncButton.addEventListener("click", () => void syncCampaignCode(true));
+  syncButton.addEventListener("click", () => void (async () => {
+    syncButton.disabled = true;
+    try {
+      const visibleSettings = {
+        relayUrl: normalizeRelayUrl(relayInput?.value),
+        campaignId: String(campaignIdInput?.value || "").trim(),
+        campaignCode: String(codeInput?.value || "").trim().toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1"),
+        bridgeKey: String(bridgeKeyInput?.value || "").trim(),
+      };
+      for (const [key, value] of Object.entries(visibleSettings)) {
+        if (String(game.settings.get(MODULE_ID, key) || "") === value) continue;
+        await game.settings.set(MODULE_ID, key, value);
+      }
+      await syncCampaignCode(true);
+    } finally {
+      syncButton.disabled = false;
+    }
+  })());
   fields.append(syncButton, button);
   const hint = document.createElement("p");
   hint.className = "hint";
