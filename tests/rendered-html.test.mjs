@@ -40,11 +40,12 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, mobile, mobileScript, mobileStyle, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, releaseLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, mobileStyle, exodustersTablesRaw, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, releaseLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.css", import.meta.url), "utf8"),
+    readFile(new URL("../public/exodusters-tables.json", import.meta.url), "utf8"),
     readFile(new URL("../public/recover.html", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
@@ -64,6 +65,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
   ]);
+  const exodustersTables = JSON.parse(exodustersTablesRaw);
   assert.doesNotMatch(page, /DEMO24/);
   assert.match(page, /Foundry is offline/);
   assert.match(page, /requestLevelUp/);
@@ -78,14 +80,15 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=29"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=30"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0144/);
+  assert.match(serviceWorker, /pocket-chronicle-v0146/);
+  assert.match(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=20/);
-  assert.match(mobile, /mobile\.css\?v=20/);
+  assert.match(mobile, /mobile\.js\?v=21/);
+  assert.match(mobile, /mobile\.css\?v=21/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -155,7 +158,16 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /setStoredAccessRequest/);
   assert.match(mobileScript, /confirm-password/);
   assert.match(mobileScript, /needsFirstTimeSetup/);
-  assert.doesNotMatch(mobileScript, /location\.(?:replace|reload)/);
+  assert.match(mobileScript, /Refresh App/);
+  assert.match(mobileScript, /location\.assign/);
+  assert.match(mobileScript, /roll-exodus-event/);
+  assert.match(mobileScript, /roll-exodus-injury/);
+  assert.match(mobileScript, /pocket-chronicle-local-injuries-v1/);
+  assert.match(mobileScript, /String\(state\.snapshot\.campaign\.id/);
+  assert.equal(exodustersTables.campaignId, "exodusters");
+  assert.equal(exodustersTables.events.length, 100);
+  assert.equal(exodustersTables.injuries.length, 50);
+  assert.deepEqual(exodustersTables.injuries.map((injury) => injury.roll), Array.from({ length: 50 }, (_, index) => index + 1));
   assert.match(recovery, /\/mobile\.html\?recovered=/);
   assert.match(schema, /export const tenants/);
   assert.match(schema, /export const playerSessions/);

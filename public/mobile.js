@@ -7,8 +7,10 @@
   var ROLL_STORAGE = "pocket-chronicle-local-rolls";
   var JOURNAL_STORAGE = "pocket-chronicle-local-journals-v1";
   var SPELL_SLOT_STORAGE = "pocket-chronicle-local-spell-slots-v1";
+  var INJURY_STORAGE = "pocket-chronicle-local-injuries-v1";
   var SNAPSHOT_DB = "pocket-chronicle-local-cache";
   var SNAPSHOT_STORE = "snapshots";
+  var exodustersTables = null;
   var state = {
     tab: "home",
     snapshot: null,
@@ -931,6 +933,7 @@
     fragment.appendChild(heroCard());
     fragment.appendChild(stressCard());
     fragment.appendChild(restLaunchCard("home"));
+    if (isExodustersCampaign()) fragment.appendChild(exodustersFieldTables());
     fragment.appendChild(combatTracker());
 
     var session = create("section", "card session-card");
@@ -947,6 +950,44 @@
     if (!snapshot.journals.length) recent.appendChild(emptyState("Nothing has been shared here yet."));
     fragment.appendChild(recent);
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function isExodustersCampaign() {
+    return Boolean(state.snapshot && state.snapshot.campaign && String(state.snapshot.campaign.id || "").trim().toLowerCase() === "exodusters");
+  }
+
+  function exodustersFieldTables() {
+    var card = create("section", "exodusters-tools-card");
+    var heading = create("div", "exodusters-tools-heading");
+    var headingCopy = create("div");
+    headingCopy.appendChild(create("small", "eyebrow", "Exodusters Field Tables"));
+    headingCopy.appendChild(create("strong", "", "What waits beyond the dunes?"));
+    headingCopy.appendChild(create("span", "", "These rolls stay inside Pocket Chronicle."));
+    heading.appendChild(create("span", "exodusters-tools-sigil", "☀"));
+    heading.appendChild(headingCopy);
+    card.appendChild(heading);
+
+    var actions = create("div", "exodusters-table-actions");
+    var eventButton = create("button", "exodusters-table-button event-table-button");
+    eventButton.type = "button";
+    eventButton.dataset.action = "roll-exodus-event";
+    eventButton.appendChild(create("span", "table-button-die", "d100"));
+    var eventCopy = create("span");
+    eventCopy.appendChild(create("strong", "", "World Event"));
+    eventCopy.appendChild(create("small", "", "A discovery, danger, or strange turn."));
+    eventButton.appendChild(eventCopy);
+
+    var injuryButton = create("button", "exodusters-table-button injury-table-button");
+    injuryButton.type = "button";
+    injuryButton.dataset.action = "roll-exodus-injury";
+    injuryButton.appendChild(create("span", "table-button-die", "d50"));
+    var injuryCopy = create("span");
+    injuryCopy.appendChild(create("strong", "", "Injury & Disease"));
+    injuryCopy.appendChild(create("small", "", "Saved to this character's phone sheet."));
+    injuryButton.appendChild(injuryCopy);
+    actions.append(eventButton, injuryButton);
+    card.appendChild(actions);
+    return card;
   }
 
   function worldStateCard() {
@@ -1079,6 +1120,7 @@
     fragment.appendChild(quick);
     var sheetRest = restLaunchCard("sheet");
     if (sheetRest) fragment.appendChild(sheetRest);
+    if (isExodustersCampaign()) fragment.appendChild(localInjuriesCard());
 
     var death = actor.deathSaves || { successes: 0, failures: 0 };
     var deathCard = create("section", "death-card");
@@ -1173,6 +1215,149 @@
     var resources = actor.resources || [];
     if (resources.length) fragment.appendChild(resourceDisclosure(resources));
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function localInjuryStorageKey() {
+    return [state.snapshot && state.snapshot.campaign.id, state.snapshot && state.snapshot.actor.uuid].filter(Boolean).join("::");
+  }
+
+  function readLocalInjuries() {
+    var all = {};
+    try { all = JSON.parse(window.localStorage.getItem(INJURY_STORAGE) || "{}"); } catch { all = {}; }
+    return Array.isArray(all[localInjuryStorageKey()]) ? all[localInjuryStorageKey()] : [];
+  }
+
+  function writeLocalInjuries(injuries) {
+    var all = {};
+    try { all = JSON.parse(window.localStorage.getItem(INJURY_STORAGE) || "{}"); } catch { all = {}; }
+    all[localInjuryStorageKey()] = injuries.slice(0, 50);
+    try {
+      window.localStorage.setItem(INJURY_STORAGE, JSON.stringify(all));
+      return true;
+    } catch {
+      showToast("This phone could not save the injury result.", 4800);
+      return false;
+    }
+  }
+
+  function localInjuriesCard() {
+    var injuries = readLocalInjuries();
+    var card = create("section", "local-injuries-card");
+    var heading = create("div", "local-injuries-heading");
+    var headingCopy = create("div");
+    headingCopy.appendChild(create("small", "eyebrow", "Phone-only record"));
+    headingCopy.appendChild(create("strong", "", "Injuries & Diseases"));
+    headingCopy.appendChild(create("span", "", injuries.length ? injuries.length + (injuries.length === 1 ? " active condition" : " active conditions") : "No active conditions"));
+    heading.appendChild(headingCopy);
+    var roll = create("button", "local-injury-roll", "Roll d50");
+    roll.type = "button";
+    roll.dataset.action = "roll-exodus-injury";
+    heading.appendChild(roll);
+    card.appendChild(heading);
+
+    var list = create("div", "local-injury-list");
+    injuries.forEach(function (injury) {
+      var item = create("article", "local-injury-entry");
+      var number = create("span", "local-injury-number", String(injury.roll).padStart(2, "0"));
+      var copy = create("div");
+      copy.appendChild(create("strong", "", injury.name));
+      copy.appendChild(create("p", "", injury.description));
+      copy.appendChild(create("small", "", "Recorded " + new Date(injury.createdAt).toLocaleString()));
+      var recovered = create("button", "local-injury-recover", "Recovered");
+      recovered.type = "button";
+      recovered.dataset.action = "recover-exodus-injury";
+      recovered.dataset.value = injury.id;
+      item.append(number, copy, recovered);
+      list.appendChild(item);
+    });
+    if (!injuries.length) list.appendChild(emptyState("Roll from here or from the Home page. Results never alter the Foundry sheet."));
+    card.appendChild(list);
+    return card;
+  }
+
+  async function loadExodustersTables() {
+    if (exodustersTables) return exodustersTables;
+    var response = await fetch("/exodusters-tables.json?v=1", { cache: "force-cache" });
+    if (!response.ok) throw new Error("The Exodusters tables could not be opened.");
+    var data = await response.json();
+    if (data.campaignId !== "exodusters" || !Array.isArray(data.events) || data.events.length !== 100 || !Array.isArray(data.injuries) || data.injuries.length !== 50) {
+      throw new Error("The Exodusters tables are incomplete.");
+    }
+    exodustersTables = data;
+    return data;
+  }
+
+  function randomTableIndex(length) {
+    if (window.crypto && window.crypto.getRandomValues) {
+      var values = new Uint32Array(1);
+      window.crypto.getRandomValues(values);
+      return values[0] % length;
+    }
+    return Math.floor(Math.random() * length);
+  }
+
+  function saveLocalInjury(injury) {
+    var injuries = readLocalInjuries();
+    var entry = {
+      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
+      roll: injury.roll,
+      name: injury.name,
+      description: injury.description,
+      createdAt: Date.now()
+    };
+    injuries.unshift(entry);
+    writeLocalInjuries(injuries);
+    return entry;
+  }
+
+  function showExodustersResult(kind, roll, result, injury) {
+    document.getElementById("modal-title").textContent = kind === "event" ? "World Event" : "Injury & Disease";
+    var panel = create("section", "exodusters-result-card " + kind);
+    var crest = create("div", "exodusters-result-crest");
+    crest.appendChild(create("span", "", kind === "event" ? "d100" : "d50"));
+    crest.appendChild(create("strong", "", String(roll)));
+    panel.appendChild(crest);
+    panel.appendChild(create("small", "eyebrow", kind === "event" ? "The world turns" : "The journey leaves a mark"));
+    if (kind === "event") panel.appendChild(create("p", "exodusters-result-copy", result));
+    else {
+      panel.appendChild(create("h3", "", result.name));
+      panel.appendChild(create("p", "exodusters-result-copy", result.description));
+      panel.appendChild(create("small", "exodusters-result-note", "Saved on this phone for " + state.snapshot.actor.name + ". Foundry was not changed."));
+    }
+    if (injury) {
+      var chained = create("section", "exodusters-chained-injury");
+      chained.appendChild(create("small", "eyebrow", "The event triggered an injury · d50 " + injury.roll));
+      chained.appendChild(create("strong", "", injury.name));
+      chained.appendChild(create("p", "", injury.description));
+      chained.appendChild(create("small", "exodusters-result-note", "Saved on this phone for " + state.snapshot.actor.name + "."));
+      panel.appendChild(chained);
+    }
+    elements.modalContent.replaceChildren(panel);
+    elements.modal.hidden = false;
+  }
+
+  async function rollExodustersTable(kind) {
+    if (!isExodustersCampaign()) return;
+    try {
+      var tables = await loadExodustersTables();
+      if (kind === "injury") {
+        var injury = tables.injuries[randomTableIndex(tables.injuries.length)];
+        saveLocalInjury(injury);
+        showExodustersResult("injury", injury.roll, injury);
+        return;
+      }
+      var eventIndex = randomTableIndex(tables.events.length);
+      var eventRoll = eventIndex + 1;
+      var eventResult = tables.events[eventIndex];
+      var chainedInjury = null;
+      if (/^Roll on the Injury & Disease table\.$/.test(eventResult)) {
+        chainedInjury = tables.injuries[randomTableIndex(tables.injuries.length)];
+        saveLocalInjury(chainedInjury);
+      }
+      showExodustersResult("event", eventRoll, eventResult, chainedInjury);
+    } catch (error) {
+      showToast(error && error.message ? error.message : "The Exodusters table could not be rolled.", 5200);
+    }
   }
 
   function resourceDisclosure(resources) {
@@ -1891,6 +2076,17 @@
     } else if (action === "refresh-world") {
       button.disabled = true;
       loadState(true).finally(function () { button.disabled = false; });
+    } else if (action === "roll-exodus-event") {
+      button.disabled = true;
+      rollExodustersTable("event").finally(function () { button.disabled = false; });
+    } else if (action === "roll-exodus-injury") {
+      button.disabled = true;
+      rollExodustersTable("injury").finally(function () { button.disabled = false; });
+    } else if (action === "recover-exodus-injury") {
+      if (!window.confirm("Mark this injury or disease as recovered on this phone?")) return;
+      writeLocalInjuries(readLocalInjuries().filter(function (injury) { return injury.id !== button.dataset.value; }));
+      renderCharacter();
+      showToast("Condition marked as recovered.", 3200);
     } else if (action === "change-spell-slot") {
       changeLocalSpellSlot(button.dataset.value, Number(button.dataset.amount || 0));
       renderSpells();
@@ -2646,14 +2842,36 @@
     var panel = create("div", "sheet-panel");
     panel.appendChild(create("strong", "", state.account ? state.account.playerLabel : "Player account"));
     panel.appendChild(create("small", "", state.snapshot.campaign.name + " · " + state.characters.length + (state.characters.length === 1 ? " character" : " characters")));
-    var install = create("button", "sheet-action", "Install on this phone");
-    install.type = "button";
-    install.addEventListener("click", installApp);
-    var another = create("button", "sheet-action", "Connect a different campaign");
-    another.type = "button";
-    another.addEventListener("click", restartPairing);
-    elements.modalContent.replaceChildren(panel, install, another);
+    var refresh = settingsAction("↻", "Refresh App", "Check for the newest Pocket Chronicle update without removing saved data.", refreshApp);
+    var install = settingsAction("⌂", "Install on this phone", "Open Pocket Chronicle from the home screen.", installApp);
+    var another = settingsAction("◇", "Connect a different campaign", "Use another Campaign ID and permanent six-character code.", restartPairing);
+    elements.modalContent.replaceChildren(panel, refresh, install, another);
     elements.modal.hidden = false;
+  }
+
+  function settingsAction(sigil, title, copy, handler) {
+    var button = create("button", "sheet-action");
+    button.type = "button";
+    button.appendChild(create("span", "", sigil));
+    var text = create("span");
+    text.appendChild(create("strong", "", title));
+    text.appendChild(create("small", "", copy));
+    button.appendChild(text);
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  async function refreshApp() {
+    closeSettings();
+    showToast("Refreshing Pocket Chronicle…", 2600);
+    try {
+      if ("serviceWorker" in navigator) {
+        var registration = await navigator.serviceWorker.getRegistration();
+        if (registration) await registration.update();
+      }
+      await fetch("/mobile.html?refresh=" + Date.now(), { cache: "reload" });
+    } catch { /* Reloading still preserves the installed offline copy when the network is unavailable. */ }
+    window.location.assign("/mobile.html?refresh=" + Date.now());
   }
 
   function closeSettings() { elements.modal.hidden = true; }

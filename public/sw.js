@@ -1,8 +1,9 @@
-const CACHE = "pocket-chronicle-v0144-2";
+const CACHE = "pocket-chronicle-v0146-1";
 const SHELL = [
   "/mobile.html",
-  "/mobile.css?v=20",
-  "/mobile.js?v=20",
+  "/mobile.css?v=21",
+  "/mobile.js?v=21",
+  "/exodusters-tables.json?v=1",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/icon-180.png",
@@ -27,7 +28,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   const isMobileNavigation = request.mode === "navigate" && (url.pathname === "/" || url.pathname === "/mobile.html");
-  const isShellAsset = ["/mobile.css", "/mobile.js", "/manifest.webmanifest", "/favicon.svg", "/icon-180.png"].includes(url.pathname);
+  const isShellAsset = ["/mobile.css", "/mobile.js", "/exodusters-tables.json", "/manifest.webmanifest", "/favicon.svg", "/icon-180.png"].includes(url.pathname);
   if (!isMobileNavigation && !isShellAsset) return;
   event.respondWith(fetch(request).then((response) => {
     if (response.ok) {

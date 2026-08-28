@@ -690,6 +690,56 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .rest-launch-card .rest-launch-actions button { width: 100%; min-width: 0; }
 .rest-launch-card button:disabled { border-color: #364354; background: #171e28; color: #697789; opacity: .72; }
 
+.exodusters-tools-card, .local-injuries-card {
+  margin: 13px 0;
+  padding: 15px;
+  border: 1px solid #556277;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(199, 153, 79, .12), transparent 38%),
+    linear-gradient(145deg, #1a2029, #111720);
+  box-shadow: inset 0 1px rgba(229, 207, 163, .05);
+}
+.exodusters-tools-heading { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; }
+.exodusters-tools-sigil { width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid #756747; border-radius: 15px; color: #e0bd75; background: radial-gradient(circle, #3b3425, #1b1c1c); font-family: Georgia, "Times New Roman", serif; font-size: 24px; box-shadow: 0 0 18px rgba(203, 160, 82, .09); }
+.exodusters-tools-heading strong, .exodusters-tools-heading span, .local-injuries-heading strong, .local-injuries-heading span { display: block; }
+.exodusters-tools-heading strong, .local-injuries-heading strong { color: #e7e4dd; font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 500; }
+.exodusters-tools-heading div > span, .local-injuries-heading div > span { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.exodusters-table-actions { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.exodusters-table-button { min-width: 0; min-height: 83px; padding: 11px; display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 9px; border: 1px solid #4b5b70; border-radius: 16px; color: #dce6ef; background: linear-gradient(145deg, #1c2734, #151b24); text-align: left; }
+.exodusters-table-button.injury-table-button { border-color: #6c5352; background: linear-gradient(145deg, #2a2022, #19191f); }
+.table-button-die { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #70869d; border-radius: 13px; color: #c9def0; background: #202c39; font-family: Georgia, "Times New Roman", serif; font-size: 14px; }
+.injury-table-button .table-button-die { border-color: #8a6560; color: #edc6bf; background: #322426; }
+.exodusters-table-button > span:last-child { min-width: 0; display: grid; gap: 3px; }
+.exodusters-table-button strong { font-size: 11px; }
+.exodusters-table-button small { color: var(--dim); font-size: 8px; line-height: 1.35; }
+.exodusters-table-button:active { transform: translateY(1px); }
+.exodusters-table-button:disabled { opacity: .55; }
+
+.local-injuries-card { border-color: #604e52; }
+.local-injuries-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.local-injury-roll { flex: 0 0 auto; min-height: 36px; padding: 0 10px; border: 1px solid #795c5c; border-radius: 11px; color: #e8c7c2; background: #302225; font-size: 9px; font-weight: 800; }
+.local-injury-list { margin-top: 13px; display: grid; gap: 8px; }
+.local-injury-entry { padding: 11px; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; border: 1px solid #443a42; border-radius: 14px; background: #17181e; }
+.local-injury-number { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid #6e5358; border-radius: 10px; color: #e0b7b3; background: #292025; font-family: Georgia, "Times New Roman", serif; }
+.local-injury-entry div { min-width: 0; }
+.local-injury-entry strong { color: #ece5e5; font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 500; }
+.local-injury-entry p { margin: 5px 0; color: #b4b8c1; font-size: 10px; line-height: 1.5; }
+.local-injury-entry small { color: #777e8b; font-size: 8px; }
+.local-injury-recover { grid-column: 2; justify-self: start; min-height: 29px; padding: 0 9px; border: 1px solid #485c69; border-radius: 9px; color: #aac3d4; background: #19242d; font-size: 8px; font-weight: 800; }
+
+.exodusters-result-card { text-align: center; }
+.exodusters-result-crest { width: 92px; height: 92px; margin: 2px auto 15px; display: grid; place-items: center; align-content: center; border: 1px solid #7d735d; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3d4d5d, #1e2935 58%, #14191f); box-shadow: inset 0 0 0 5px rgba(232, 210, 164, .035), 0 0 25px rgba(182, 142, 72, .12); }
+.exodusters-result-card.injury .exodusters-result-crest { border-color: #815f5e; background: radial-gradient(circle at 35% 30%, #51373a, #2b2227 58%, #17171d); }
+.exodusters-result-crest span { color: #d8bd7d; font-size: 9px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.exodusters-result-crest strong { color: #f1eee8; font-family: Georgia, "Times New Roman", serif; font-size: 38px; font-weight: 500; line-height: 1; }
+.exodusters-result-card h3 { margin: 7px 0 8px; color: #efe8e4; font-family: Georgia, "Times New Roman", serif; font-size: 26px; font-weight: 500; }
+.exodusters-result-copy { margin: 8px 0 0; padding: 14px; border: 1px solid #3f4a59; border-radius: 15px; color: #d3d7dd; background: #151b23; font-size: 12px; line-height: 1.62; text-align: left; }
+.exodusters-result-note { display: block; margin-top: 11px; color: var(--dim); font-size: 9px; line-height: 1.45; }
+.exodusters-chained-injury { margin-top: 13px; padding: 13px; border: 1px solid #654c50; border-radius: 15px; background: #211a1e; text-align: left; }
+.exodusters-chained-injury strong { display: block; margin-top: 6px; color: #efdedc; font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 500; }
+.exodusters-chained-injury p { margin: 6px 0 0; color: #c7bec0; font-size: 10px; line-height: 1.55; }
+
 .equipment-summary, .shop-closed-card { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; align-items: center; }
 .equipment-list { display: grid; gap: 9px; }
 .equipment-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid #303d4f; border-radius: 17px; background: #151c26; overflow: hidden; }
@@ -765,4 +815,5 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .bottom-nav button small { font-size: 7px; }
   .world-state-card { grid-template-columns: 42px minmax(0, 1fr); }
   .world-sync-button { grid-column: 1 / -1; }
+  .exodusters-table-actions { grid-template-columns: 1fr; }
 }
