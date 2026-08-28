@@ -182,6 +182,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /pocketChronicleBridgeReady/);
   assert.match(bridge, /availableExtensions/);
   assert.match(bridge, /pocket-chronicle-rest-rations/);
+  assert.match(bridge, /integratedRestRationsFlags/);
+  assert.match(bridge, /restRationsFlag/);
+  assert.doesNotMatch(bridge, /getFlag\((?:LEGACY_REST_RATIONS_ID|"pocket-chronicle-rest-rations")/);
   assert.match(bridge, /Open Shop Manager/);
   assert.doesNotMatch(bridge, /Open Pocket Chat/);
   assert.match(bridge, /currencyTotal/);
@@ -217,7 +220,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.14\.2"/);
+  assert.match(moduleManifest, /"version": "0\.14\.3"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

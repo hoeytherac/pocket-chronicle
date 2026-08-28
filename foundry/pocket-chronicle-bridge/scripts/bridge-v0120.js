@@ -1,9 +1,10 @@
-/* Pocket Chronicle Bridge v0.14.1 */
+/* Pocket Chronicle Bridge v0.14.3 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
-const REST_RATIONS_ID = "pocket-chronicle-rest-rations";
+const REST_RATIONS_FLAG = "restRations";
+const LEGACY_REST_RATIONS_ID = "pocket-chronicle-rest-rations";
 const PROVISION_FOLDER_NAME = "Pocket Chronicle — Rest & Rations";
 const BUILT_IN_PROVISIONS = [
   { key: "hearty-feast", name: "Hearty Feast", kind: "food", tier: "great", price: { value: 1, denomination: "gp" }, image: "icons/consumables/food/plate-ribs-gravy.webp", effect: "Short rest: add proficiency bonus to every Hit Die spent. Long rest: gain 25 temporary HP." },
@@ -22,6 +23,18 @@ let activePhoneUserId = "";
 let activePhoneActorId = "";
 const displayedAccessRequests = new Set();
 const bridgeExtensions = new Map();
+
+function integratedRestRationsFlags(document) {
+  const flags = document?.flags || document?._source?.flags || {};
+  return flags?.[MODULE_ID]?.[REST_RATIONS_FLAG] || {};
+}
+
+function restRationsFlag(document, key) {
+  const integrated = integratedRestRationsFlags(document);
+  if (integrated[key] !== undefined) return integrated[key];
+  const flags = document?.flags || document?._source?.flags || {};
+  return flags?.[LEGACY_REST_RATIONS_ID]?.[key];
+}
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "mapFree", {
@@ -54,7 +67,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.2",
+    version: "0.14.3",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -784,7 +797,7 @@ async function executeExtensionAction(action, context) {
 function availableExtensions() {
   const extensions = new Map(bridgeExtensions);
   if (!extensions.has("restRations")) {
-    const restRations = game.modules.get(REST_RATIONS_ID);
+    const restRations = game.modules.get(LEGACY_REST_RATIONS_ID);
     const api = restRations?.active ? restRations.api : null;
     if (typeof api?.getSnapshotData === "function" && typeof api?.executeAction === "function") {
       extensions.set("restRations", {
@@ -1292,10 +1305,10 @@ async function executeAction(action) {
         const currencyUpdate = Object.fromEntries(Object.entries(afterCurrency).map(([key, value]) => [`system.currency.${key}`, value]));
         await actor.update(currencyUpdate, { pocketChronicle: true });
         try {
-          const provisionKey = item.getFlag("pocket-chronicle-rest-rations", "provisionKey");
+          const provisionKey = restRationsFlag(item, "provisionKey");
           const stackable = ["consumable", "loot"].includes(item.type);
           const existing = stackable ? actor.items.find((owned) => provisionKey
-            ? owned.getFlag("pocket-chronicle-rest-rations", "provisionKey") === provisionKey
+            ? restRationsFlag(owned, "provisionKey") === provisionKey
             : owned.type === item.type && owned.name === item.name) : null;
           if (existing) await existing.update({ "system.quantity": Math.max(0, Number(existing.system?.quantity || 0)) + quantity });
           else {
@@ -1353,7 +1366,7 @@ async function openShopManager() {
     return false;
   }
   const rows = items.map((item) => {
-    const permanent = Boolean(item.getFlag("pocket-chronicle-rest-rations", "permanentShop"));
+    const permanent = Boolean(restRationsFlag(item, "permanentShop"));
     const checked = permanent || Boolean(item.getFlag(MODULE_ID, SHOP_FLAG));
     const price = shopPrice(item);
     return `<label class="pocket-chronicle-shop-row"><input type="checkbox" data-item-id="${item.id}" ${checked ? "checked" : ""} ${permanent ? "disabled" : ""}><span><strong>${foundry.utils.escapeHTML(item.name)}</strong><small>${foundry.utils.escapeHTML(item.type)} · ${price.value} ${price.currency}${permanent ? " · Rest & Rations fixture" : ""}</small></span></label>`;
@@ -1389,7 +1402,7 @@ async function openShopManager() {
   }
   if (!(selected instanceof Set)) return false;
   for (const item of items) {
-    const permanent = Boolean(item.getFlag("pocket-chronicle-rest-rations", "permanentShop"));
+    const permanent = Boolean(restRationsFlag(item, "permanentShop"));
     const shared = permanent || selected.has(item.id);
     if (Boolean(item.getFlag(MODULE_ID, SHOP_FLAG)) === shared) continue;
     if (shared) await item.setFlag(MODULE_ID, SHOP_FLAG, true);
@@ -1398,6 +1411,16 @@ async function openShopManager() {
   await pushAllSnapshots();
   ui.notifications.info("Pocket Chronicle shop updated.");
   return true;
+}
+
+function builtInProvisionFlags(provision) {
+  return {
+    provisionKey: provision.key,
+    kind: provision.kind,
+    tier: provision.tier,
+    effect: provision.effect,
+    permanentShop: true,
+  };
 }
 
 function builtInProvisionData(provision) {
@@ -1418,14 +1441,10 @@ function builtInProvisionData(provision) {
       activities: {},
     },
     flags: {
-      [REST_RATIONS_ID]: {
-        provisionKey: provision.key,
-        kind: provision.kind,
-        tier: provision.tier,
-        effect: provision.effect,
-        permanentShop: true,
+      [MODULE_ID]: {
+        [SHOP_FLAG]: true,
+        [REST_RATIONS_FLAG]: builtInProvisionFlags(provision),
       },
-      [MODULE_ID]: { [SHOP_FLAG]: true },
     },
   };
 }
@@ -1447,12 +1466,15 @@ async function ensureBuiltInProvisions() {
   if (typeof ItemDocument?.create !== "function") throw new Error("Foundry's Item document API is unavailable.");
   const items = [];
   for (const provision of BUILT_IN_PROVISIONS) {
-    let item = game.items.find((entry) => entry.getFlag(REST_RATIONS_ID, "provisionKey") === provision.key);
+    let item = game.items.find((entry) => restRationsFlag(entry, "provisionKey") === provision.key);
     if (!item) item = await ItemDocument.create({ ...builtInProvisionData(provision), folder: folder.id }, { renderSheet: false });
     else {
       const update = {};
       if (!item.getFlag(MODULE_ID, SHOP_FLAG)) update[`flags.${MODULE_ID}.${SHOP_FLAG}`] = true;
-      if (!item.getFlag(REST_RATIONS_ID, "permanentShop")) update[`flags.${REST_RATIONS_ID}.permanentShop`] = true;
+      const integrated = integratedRestRationsFlags(item);
+      for (const [key, value] of Object.entries(builtInProvisionFlags(provision))) {
+        if (integrated[key] !== value) update[`flags.${MODULE_ID}.${REST_RATIONS_FLAG}.${key}`] = value;
+      }
       if (item.folder?.id !== folder.id) update.folder = folder.id;
       if (Object.keys(update).length) await item.update(update, { pocketChronicle: true });
     }
@@ -1478,20 +1500,20 @@ function builtInHitDice(actor) {
 
 function builtInRestSnapshot(actor) {
   const inventory = actor.items.flatMap((item) => {
-    const key = item.getFlag(REST_RATIONS_ID, "provisionKey");
+    const key = restRationsFlag(item, "provisionKey");
     const quantity = Math.max(0, Number(item.system?.quantity || 0));
     if (!key || quantity < 1) return [];
     return [{
       uuid: item.uuid,
       key,
       name: item.name,
-      kind: item.getFlag(REST_RATIONS_ID, "kind"),
-      tier: item.getFlag(REST_RATIONS_ID, "tier"),
+      kind: restRationsFlag(item, "kind"),
+      tier: restRationsFlag(item, "tier"),
       quantity,
-      effect: item.getFlag(REST_RATIONS_ID, "effect") || "",
+      effect: restRationsFlag(item, "effect") || "",
     }];
   });
-  const exemptions = actor.getFlag(REST_RATIONS_ID, "exemptions") || {};
+  const exemptions = restRationsFlag(actor, "exemptions") || {};
   return {
     enabled: true,
     food: inventory.filter((item) => item.kind === "food"),
@@ -1505,7 +1527,7 @@ function builtInRestSnapshot(actor) {
 async function ownedBuiltInProvision(actor, uuid, expectedKind, exempt) {
   if (exempt) return null;
   const item = await fromUuid(String(uuid || ""));
-  if (!item || item.parent?.uuid !== actor.uuid || item.getFlag(REST_RATIONS_ID, "kind") !== expectedKind) throw new Error(`Choose a ${expectedKind} serving from this character's inventory.`);
+  if (!item || item.parent?.uuid !== actor.uuid || restRationsFlag(item, "kind") !== expectedKind) throw new Error(`Choose a ${expectedKind} serving from this character's inventory.`);
   if (Number(item.system?.quantity || 0) < 1) throw new Error(`${item.name} has no servings remaining.`);
   return item;
 }
@@ -1528,11 +1550,11 @@ function normalizedBuiltInHitDice(requested, actor) {
 async function executeBuiltInRest(action, context) {
   const { actor, messageData } = context;
   const restType = action.payload.restType === "long" ? "long" : "short";
-  const exemptions = actor.getFlag(REST_RATIONS_ID, "exemptions") || {};
+  const exemptions = restRationsFlag(actor, "exemptions") || {};
   const food = await ownedBuiltInProvision(actor, action.payload.foodItemUuid, "food", Boolean(exemptions.food));
   const water = await ownedBuiltInProvision(actor, action.payload.waterItemUuid, "water", Boolean(exemptions.water));
-  const foodKey = food?.getFlag(REST_RATIONS_ID, "provisionKey") || "exempt";
-  const waterKey = water?.getFlag(REST_RATIONS_ID, "provisionKey") || "exempt";
+  const foodKey = restRationsFlag(food, "provisionKey") || "exempt";
+  const waterKey = restRationsFlag(water, "provisionKey") || "exempt";
   const hearty = foodKey === "hearty-feast";
   let diceSpent = 0;
   let heartyBonus = 0;
@@ -1686,7 +1708,10 @@ function configureSettingsUi(html) {
   const shopButton = document.createElement("button");
   shopButton.type = "button";
   shopButton.innerHTML = '<i class="fa-solid fa-store"></i> Open Shop Manager';
-  shopButton.addEventListener("click", () => void openShopManager());
+  shopButton.addEventListener("click", () => void openShopManager().catch((error) => {
+    console.error(`${MODULE_ID} | Shop Manager could not open`, error);
+    ui.notifications.error(`Pocket Chronicle Shop Manager could not open: ${error.message || error}`);
+  }));
   shopFields.append(shopButton);
   const shopHint = document.createElement("p");
   shopHint.className = "hint";
