@@ -54,7 +54,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.1",
+    version: "0.14.2",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -305,10 +305,14 @@ function headers() {
 async function bridgeFetch(path, options = {}) {
   if (!hasCompleteConfig()) throw new Error("Pocket Chronicle Bridge is not fully configured.");
   const current = config();
+  const relay = new URL(current.relayUrl);
+  relay.pathname = `${relay.pathname.replace(/\/+$/, "")}/${String(path || "").replace(/^\/+/, "")}`;
+  relay.search = "";
+  relay.hash = "";
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${current.relayUrl}${path}`, {
+    const response = await fetch(relay.toString(), {
       ...options,
       signal: controller.signal,
       headers: { ...headers(), ...(options.headers || {}) },

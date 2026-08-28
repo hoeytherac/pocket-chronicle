@@ -62,8 +62,13 @@ function withBridgeCors(response: Response, origin: string | null) {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const normalizedPathname = url.pathname.replace(/^\/+/, "/");
+    const routedRequest = normalizedPathname === url.pathname
+      ? request
+      : new Request(new URL(`${normalizedPathname}${url.search}`, url.origin), request);
+    url.pathname = normalizedPathname;
     const isBridgeRequest = url.pathname.startsWith("/api/bridge/");
-    const bridgeOrigin = isBridgeRequest ? allowedBridgeOrigin(request) : null;
+    const bridgeOrigin = isBridgeRequest ? allowedBridgeOrigin(routedRequest) : null;
 
     if (isBridgeRequest && request.method === "OPTIONS") {
       if (!bridgeOrigin) return new Response(null, { status: 403 });
@@ -81,7 +86,7 @@ const worker = {
       }, allowedWidths);
     }
 
-    return withBridgeCors(await handler.fetch(request, env, ctx), bridgeOrigin);
+    return withBridgeCors(await handler.fetch(routedRequest, env, ctx), bridgeOrigin);
   },
 };
 

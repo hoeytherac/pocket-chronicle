@@ -77,14 +77,14 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"orientation": "portrait-primary"/);
   assert.match(manifest, /"id": "\/"/);
   assert.match(manifest, /"scope": "\/"/);
-  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=28"/);
+  assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=29"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0140/);
+  assert.match(serviceWorker, /pocket-chronicle-v0142/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=18/);
-  assert.match(mobile, /mobile\.css\?v=18/);
+  assert.match(mobile, /mobile\.js\?v=19/);
+  assert.match(mobile, /mobile\.css\?v=19/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -118,6 +118,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /Tap anywhere to close · Stays open for 30 seconds/);
   assert.match(mobileScript, /window\.setTimeout\(close, 30000\)/);
   assert.match(mobileStyle, /grid-template-columns: repeat\(7, 1fr\)/);
+  assert.match(mobileStyle, /hero-card \+ \.stress-card/);
+  assert.match(mobileStyle, /rest-launch-card \+ \.combat-card/);
   assert.match(mobileStyle, /grid-template-rows: minmax\(0, 1fr\)/);
   assert.match(mobileStyle, /flex: 0 0 calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.doesNotMatch(mobileStyle, /clamp\(136px, 18dvh, 170px\)/);
@@ -215,7 +217,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /Approve Reset/);
   assert.match(compatibilityLoader, /bridge-v0120\.js/);
   assert.match(moduleManifest, /bridge-v0120\.js/);
-  assert.match(moduleManifest, /"version": "0\.14\.1"/);
+  assert.match(moduleManifest, /"version": "0\.14\.2"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);
@@ -262,16 +264,22 @@ test("understands Foundry D&D5e roll formulas used by synchronized activities", 
 });
 
 test("allows authenticated bridge traffic from any HTTPS Foundry server", async () => {
-  const response = await requestWorker(new Request("http://localhost/api/bridge/heartbeat", {
+  const origin = "https://foundry.example.com";
+  const requestOptions = {
     method: "OPTIONS",
     headers: {
-      origin: "https://foundry.example.com",
+      origin,
       "access-control-request-method": "POST",
       "access-control-request-headers": "authorization,content-type,x-pocket-campaign",
     },
-  }));
+  };
+  const response = await requestWorker(new Request("http://localhost/api/bridge/heartbeat", requestOptions));
 
   assert.equal(response.status, 204);
-  assert.equal(response.headers.get("access-control-allow-origin"), "https://foundry.example.com");
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
   assert.match(response.headers.get("access-control-allow-headers") ?? "", /x-pocket-campaign/);
+
+  const legacyDoubleSlash = await requestWorker(new Request("http://localhost//api/bridge/heartbeat", requestOptions));
+  assert.equal(legacyDoubleSlash.status, 204);
+  assert.equal(legacyDoubleSlash.headers.get("access-control-allow-origin"), origin);
 });
