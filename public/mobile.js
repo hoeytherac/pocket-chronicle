@@ -5,13 +5,20 @@
   var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
   var ROLL_STORAGE = "pocket-chronicle-local-rolls";
+  var JOURNAL_STORAGE = "pocket-chronicle-local-journals-v1";
+  var SPELL_SLOT_STORAGE = "pocket-chronicle-local-spell-slots-v1";
+  var SNAPSHOT_DB = "pocket-chronicle-local-cache";
+  var SNAPSHOT_STORE = "snapshots";
   var state = {
     tab: "home",
     snapshot: null,
     characters: [],
     account: readStoredAccount(),
     bridgeOnline: false,
+    worldActive: false,
     selectedJournal: null,
+    journalMode: "mine",
+    editJournalId: "",
     sheetCategory: "action",
     campaignId: "",
     campaignCode: "",
@@ -22,7 +29,12 @@
     approvalTimer: 0,
     installPrompt: null,
     refreshTimer: 0,
-    revision: 0
+    revision: 0,
+    chatChannel: "group",
+    chatContacts: [],
+    chatRecipientId: "",
+    chatMessages: [],
+    chatLoading: false
   };
 
   var elements = {};
@@ -30,6 +42,9 @@
   document.addEventListener("DOMContentLoaded", start);
 
   function start() {
+    if ("serviceWorker" in navigator && /^https?:$/.test(window.location.protocol)) {
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(function () { /* The app still works without offline shell caching. */ });
+    }
     elements.shell = document.getElementById("chronicle");
     elements.gate = document.getElementById("gate");
     elements.gateTitle = document.getElementById("gate-title");
@@ -69,7 +84,7 @@
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState !== "visible") return;
       if (state.accessRequest) startApprovalPoll();
-      else loadState(true);
+      else if (state.worldActive || !state.snapshot) loadState(true);
     });
     window.addEventListener("error", function () {
       showToast("Pocket Chronicle hit a screen error. Your campaign data is safe; tap Home to refresh this view.", 6500);
@@ -81,8 +96,8 @@
     if (state.accessRequest) showApprovalWaiting();
     else loadState();
     state.refreshTimer = window.setInterval(function () {
-      if (document.visibilityState === "visible" && !state.accessRequest) loadState(true);
-    }, 30000);
+      if (state.worldActive && document.visibilityState === "visible" && !state.accessRequest) loadState(true);
+    }, 120000);
   }
 
   function readStoredAccount() {
@@ -114,6 +129,55 @@
     state.accessRequest = accessRequest;
     if (accessRequest) window.localStorage.setItem(ACCESS_REQUEST_STORAGE, JSON.stringify(accessRequest));
     else window.localStorage.removeItem(ACCESS_REQUEST_STORAGE);
+  }
+
+  function openSnapshotDb() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) {
+        reject(new Error("IndexedDB unavailable"));
+        return;
+      }
+      var request = window.indexedDB.open(SNAPSHOT_DB, 1);
+      request.onupgradeneeded = function () {
+        if (!request.result.objectStoreNames.contains(SNAPSHOT_STORE)) request.result.createObjectStore(SNAPSHOT_STORE, { keyPath: "key" });
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error); };
+    });
+  }
+
+  async function cacheSnapshot(snapshot, revision) {
+    if (!snapshot || !snapshot.actor) return;
+    try {
+      var db = await openSnapshotDb();
+      var transaction = db.transaction(SNAPSHOT_STORE, "readwrite");
+      transaction.objectStore(SNAPSHOT_STORE).put({
+        key: String(snapshot.actor.uuid),
+        snapshot: snapshot,
+        revision: Number(revision || snapshot.revision || 0),
+        savedAt: Date.now()
+      });
+      await new Promise(function (resolve, reject) {
+        transaction.oncomplete = resolve;
+        transaction.onerror = function () { reject(transaction.error); };
+      });
+      db.close();
+    } catch { /* The server copy remains the fallback if private browsing blocks local storage. */ }
+  }
+
+  async function readCachedSnapshot(actorUuid) {
+    if (!actorUuid) return null;
+    try {
+      var db = await openSnapshotDb();
+      var transaction = db.transaction(SNAPSHOT_STORE, "readonly");
+      var request = transaction.objectStore(SNAPSHOT_STORE).get(String(actorUuid));
+      var value = await new Promise(function (resolve, reject) {
+        request.onsuccess = function () { resolve(request.result || null); };
+        request.onerror = function () { reject(request.error); };
+      });
+      db.close();
+      return value;
+    } catch { return null; }
   }
 
   async function api(path, options) {
@@ -151,6 +215,7 @@
       state.snapshot = result.data.snapshot;
       state.revision = nextRevision;
       state.bridgeOnline = Boolean(result.data.bridgeOnline);
+      state.worldActive = result.data.worldState === "active" && state.bridgeOnline;
       state.characters = result.data.characters || [actorChoice(result.data.snapshot.actor)];
       if (result.data.account) {
         setStoredAccount({
@@ -160,6 +225,7 @@
         });
       }
       window.localStorage.setItem(CHARACTER_STORAGE, result.data.snapshot.actor.uuid);
+      void cacheSnapshot(result.data.snapshot, nextRevision);
       if (unchanged) updateStatus();
       else showApp(Boolean(silent && previousActorUuid === nextActorUuid));
       return;
@@ -167,7 +233,19 @@
 
     if (silent && state.snapshot) {
       state.bridgeOnline = false;
+      state.worldActive = false;
       updateStatus();
+      return;
+    }
+    var cached = await readCachedSnapshot(storedActor);
+    if (cached && cached.snapshot) {
+      state.snapshot = cached.snapshot;
+      state.revision = Number(cached.revision || cached.snapshot.revision || 0);
+      state.bridgeOnline = false;
+      state.worldActive = false;
+      state.characters = [actorChoice(cached.snapshot.actor)];
+      showApp(false);
+      showToast("Showing the last saved campaign copy. Live table actions will return when the GM starts the world.", 6200);
       return;
     }
     if (result.status === 401 && state.account) {
@@ -612,10 +690,11 @@
 
   function updateStatus() {
     if (!state.snapshot) return;
-    elements.statusStrip.classList.toggle("offline", !state.bridgeOnline);
-    elements.statusLabel.textContent = state.bridgeOnline
-      ? "Connected to " + state.snapshot.campaign.name
-      : state.snapshot.campaign.name + " · saved data · Foundry sleeping";
+    elements.statusStrip.classList.toggle("offline", !state.worldActive);
+    elements.statusStrip.classList.toggle("active-world", state.worldActive);
+    elements.statusLabel.textContent = state.worldActive
+      ? "Active World · " + state.snapshot.campaign.name
+      : "Sleeping World · " + state.snapshot.campaign.name + " · saved locally";
   }
 
   function selectTab(tab) {
@@ -626,6 +705,7 @@
       button.classList.toggle("active", button.dataset.tab === tab);
     });
     renderCurrentView(true);
+    if (tab === "chat") void loadPocketMessages();
   }
 
   function renderCurrentView(resetScroll) {
@@ -634,9 +714,9 @@
     if (state.tab === "home") renderHome();
     else if (state.tab === "character") renderCharacter();
     else if (state.tab === "spells") renderSpells();
-    else if (state.tab === "effects") renderEffects();
     else if (state.tab === "journal") renderJournal();
     else if (state.tab === "chat") renderChat();
+    else if (state.tab === "equipment") renderEquipment();
     else if (state.tab === "shop") renderShop();
     elements.viewContent.scrollTop = resetScroll === false ? previousScroll : 0;
   }
@@ -699,17 +779,24 @@
 
   function restLaunchCard(location) {
     var extension = restRationsData();
-    if (!extension) return null;
     var card = create("section", "rest-launch-card " + (location === "home" ? "rest-launch-home" : "rest-launch-sheet"));
     var sigil = create("span", "rest-launch-sigil", "☾");
     var copy = document.createElement("div");
     copy.appendChild(create("small", "eyebrow", "Rest & Rations"));
     copy.appendChild(create("strong", "", "Make camp"));
-    copy.appendChild(create("span", "", "Choose provisions, spend Hit Dice, and rest safely."));
-    var button = create("button", "", "Rest");
-    button.type = "button";
-    button.dataset.action = "open-rest";
-    card.append(sigil, copy, button);
+    copy.appendChild(create("span", "", state.worldActive
+      ? extension ? "Choose provisions and recover while the world is active." : "Rest supplies have not been published to this world yet."
+      : "Rest becomes available when the GM starts an Active World."));
+    var buttons = create("div", "rest-launch-actions");
+    [["short", "Short rest"], ["long", "Long rest"]].forEach(function (entry) {
+      var button = create("button", "", entry[1]);
+      button.type = "button";
+      button.dataset.action = "open-rest";
+      button.dataset.value = entry[0];
+      button.disabled = !state.worldActive || !extension;
+      buttons.appendChild(button);
+    });
+    card.append(sigil, copy, buttons);
     return card;
   }
 
@@ -734,7 +821,7 @@
     return label;
   }
 
-  function openRestPanel() {
+  function openRestPanel(initialType) {
     var extension = restRationsData();
     if (!extension) return;
     document.getElementById("modal-title").textContent = "Rest & Rations";
@@ -757,6 +844,7 @@
       option.textContent = entry[1];
       restType.appendChild(option);
     });
+    restType.value = initialType === "long" ? "long" : "short";
     typeLabel.appendChild(restType);
     form.appendChild(typeLabel);
 
@@ -805,6 +893,7 @@
       hitDice.hidden = !shortRest;
       confirm.textContent = shortRest ? "Complete short rest" : "Complete long rest";
     });
+    restType.dispatchEvent(new Event("change"));
     form.addEventListener("submit", submitRationsRest);
     elements.modalContent.replaceChildren(form);
     elements.modal.hidden = false;
@@ -833,12 +922,16 @@
   function renderHome() {
     var snapshot = state.snapshot;
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("Welcome back", "Your adventure, close at hand", "A clear view of what matters at the table."));
+    fragment.appendChild(pageTitle("Pocket Chronicle", state.worldActive ? "The world is awake" : "Your adventure rests here", state.worldActive
+      ? "Live table controls are open for this session."
+      : "Your character, notes, spells, gear, and conversations remain close while Foundry sleeps."));
+    fragment.appendChild(worldStateCard());
     var picker = characterPicker();
     if (picker) fragment.appendChild(picker);
     fragment.appendChild(heroCard());
-    var homeRest = restLaunchCard("home");
-    if (homeRest) fragment.appendChild(homeRest);
+    fragment.appendChild(stressCard());
+    fragment.appendChild(restLaunchCard("home"));
+    fragment.appendChild(combatTracker());
 
     var session = create("section", "card session-card");
     session.appendChild(create("p", "eyebrow", snapshot.session.dateLabel || "Current session"));
@@ -854,6 +947,87 @@
     if (!snapshot.journals.length) recent.appendChild(emptyState("Nothing has been shared here yet."));
     fragment.appendChild(recent);
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function worldStateCard() {
+    var card = create("section", "world-state-card " + (state.worldActive ? "awake" : "sleeping"));
+    card.appendChild(create("span", "world-state-sigil", state.worldActive ? "✦" : "☾"));
+    var copy = create("div");
+    copy.appendChild(create("small", "eyebrow", state.worldActive ? "Active World" : "Sleeping World"));
+    copy.appendChild(create("strong", "", state.worldActive ? "The table is live" : "Your chronicle is saved"));
+    copy.appendChild(create("span", "", state.worldActive
+      ? "Shop, rests, stress, hit points, and inventory actions are unlocked."
+      : "Local rolls, spell slots, gear, journals, and Pocket Chat still work."));
+    card.appendChild(copy);
+    if (state.worldActive) {
+      var sync = create("button", "world-sync-button", "Sync");
+      sync.type = "button";
+      sync.dataset.action = "refresh-world";
+      card.appendChild(sync);
+    }
+    return card;
+  }
+
+  function stressCard() {
+    var actor = state.snapshot.actor;
+    var level = Math.max(0, Math.min(6, Number(actor.exhaustion || 0)));
+    var card = create("section", "stress-card" + (level >= 6 ? " stress-death" : ""));
+    var heading = create("div", "stress-heading");
+    var copy = create("div");
+    copy.appendChild(create("small", "eyebrow", "Stress & Exhaustion"));
+    copy.appendChild(create("strong", "", level >= 6 ? "Level 6 · Death" : level ? "Level " + level : "Clear-minded"));
+    heading.appendChild(copy);
+    heading.appendChild(create("span", "stress-penalty", level ? "−" + (level * 2) + " D20 · −" + (level * 5) + " ft" : "No penalty"));
+    card.appendChild(heading);
+    var dots = create("div", "stress-dots");
+    for (var index = 1; index <= 6; index += 1) {
+      var dot = create("button", index <= level ? "filled" : "", String(index));
+      dot.type = "button";
+      dot.dataset.action = "set-stress";
+      dot.dataset.value = String(index === level ? index - 1 : index);
+      dot.disabled = !state.worldActive;
+      dot.setAttribute("aria-label", (index === level ? "Remove stress level " + index : "Set stress to level " + index));
+      dots.appendChild(dot);
+    }
+    card.appendChild(dots);
+    card.appendChild(create("small", "stress-note", state.worldActive
+      ? "Tap a level to change it. Level 6 is fatal."
+      : "Stress is read-only until the GM starts the world."));
+    return card;
+  }
+
+  function combatTracker() {
+    var combat = state.snapshot.combat || { active: false, combatants: [] };
+    var card = create("section", "combat-card");
+    var heading = create("div", "combat-heading");
+    var copy = create("div");
+    copy.appendChild(create("small", "eyebrow", "Encounter"));
+    copy.appendChild(create("strong", "", combat.active ? "Combat tracker" : "No active combat"));
+    heading.appendChild(copy);
+    if (combat.active) heading.appendChild(create("span", "combat-round", "Round " + Math.max(1, Number(combat.round || 1))));
+    card.appendChild(heading);
+    var list = create("div", "combat-list");
+    (combat.combatants || []).forEach(function (combatant, index) {
+      var row = create("div", "combat-row" + (combatant.active ? " current" : "") + (combatant.defeated ? " defeated" : ""));
+      row.appendChild(create("span", "combat-order", String(index + 1).padStart(2, "0")));
+      if (combatant.portrait) {
+        var image = document.createElement("img");
+        image.src = combatant.portrait;
+        image.alt = "";
+        row.appendChild(image);
+      } else row.appendChild(create("span", "combat-avatar", initials(combatant.name)));
+      var rowCopy = create("span", "combat-copy");
+      rowCopy.appendChild(create("strong", "", combatant.name || "Combatant"));
+      rowCopy.appendChild(create("small", "", combatant.active ? "Taking a turn" : combatant.defeated ? "Defeated" : "Waiting"));
+      row.appendChild(rowCopy);
+      row.appendChild(create("b", "combat-initiative", combatant.initiative === null || combatant.initiative === undefined ? "—" : String(combatant.initiative)));
+      list.appendChild(row);
+    });
+    if (!combat.active || !(combat.combatants || []).length) list.appendChild(emptyState(state.worldActive
+      ? "The turn order will appear here when the GM begins combat."
+      : "Combat tracking wakes with the Foundry world."));
+    card.appendChild(list);
+    return card;
   }
 
   function renderCharacter() {
@@ -996,23 +1170,6 @@
     if (!visibleItems.length) actions.appendChild(emptyState("No " + state.sheetCategory + " entries are available for this character."));
     fragment.appendChild(actions);
 
-    var bio = create("form", "bio-form");
-    bio.dataset.form = "biography";
-    var bioLabel = create("label", "", "Biography and notes");
-    bioLabel.htmlFor = "biography";
-    var textarea = document.createElement("textarea");
-    textarea.id = "biography";
-    textarea.value = actor.biography || "";
-    bio.appendChild(bioLabel);
-    bio.appendChild(textarea);
-    bio.appendChild(submitButton("Send biography update"));
-    fragment.appendChild(bio);
-
-    var levelButton = create("button", "secondary-button full-button", "Request edit or level up");
-    levelButton.type = "button";
-    levelButton.dataset.action = "level-up";
-    fragment.appendChild(levelButton);
-
     var resources = actor.resources || [];
     if (resources.length) fragment.appendChild(resourceDisclosure(resources));
     elements.viewContent.replaceChildren(fragment);
@@ -1090,18 +1247,75 @@
     return row;
   }
 
+  function spellSlotStorageKey() {
+    return [state.snapshot && state.snapshot.campaign.id, state.snapshot && state.snapshot.actor.uuid].filter(Boolean).join("::");
+  }
+
+  function readAllLocalSpellSlots() {
+    try {
+      var parsed = JSON.parse(window.localStorage.getItem(SPELL_SLOT_STORAGE) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch { return {}; }
+  }
+
+  function writeAllLocalSpellSlots(value) {
+    try { window.localStorage.setItem(SPELL_SLOT_STORAGE, JSON.stringify(value)); } catch { /* Keep the imported snapshot if storage is full. */ }
+  }
+
+  function localSpellSlots(forceImport) {
+    var all = readAllLocalSpellSlots();
+    var key = spellSlotStorageKey();
+    var imported = state.snapshot.actor.spellSlots || [];
+    if (forceImport || !all[key]) {
+      all[key] = {};
+      imported.forEach(function (slot) {
+        all[key][slot.key] = { value: Number(slot.value || 0), max: Number(slot.max || 0), importedAt: Date.now() };
+      });
+      writeAllLocalSpellSlots(all);
+    }
+    return all[key] || {};
+  }
+
+  function localSlotValue(slotKey, fallback) {
+    var stored = localSpellSlots(false)[slotKey];
+    return stored ? Math.max(0, Math.min(Number(stored.max || fallback.max || 0), Number(stored.value || 0))) : Number(fallback.value || 0);
+  }
+
+  function changeLocalSpellSlot(slotKey, delta) {
+    var slots = state.snapshot.actor.spellSlots || [];
+    var imported = slots.find(function (slot) { return slot.key === slotKey; });
+    if (!imported) return false;
+    var all = readAllLocalSpellSlots();
+    var key = spellSlotStorageKey();
+    if (!all[key]) localSpellSlots(false);
+    all = readAllLocalSpellSlots();
+    var current = all[key] && all[key][slotKey] || { value: imported.value, max: imported.max };
+    var next = Math.max(0, Math.min(Number(current.max || imported.max || 0), Number(current.value || 0) + Number(delta || 0)));
+    all[key][slotKey] = { value: next, max: Number(current.max || imported.max || 0), importedAt: current.importedAt || Date.now() };
+    writeAllLocalSpellSlots(all);
+    return true;
+  }
+
   function renderSpells() {
     var actor = state.snapshot.actor;
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("Arcane resources", "Spellbook", "Spells arranged by level with your current Foundry spell slots."));
+    fragment.appendChild(pageTitle("Arcane resources", "Spellbook", "Foundry provides the spellbook; this phone keeps your session’s spell slots."));
     var picker = characterPicker();
     if (picker) fragment.appendChild(picker);
 
     var slots = actor.spellSlots || [];
-    fragment.appendChild(sectionHeading("Spell slots", slots.length ? "Updates after each cast" : "No slot pool"));
+    var slotHeading = sectionHeading("Spell slots", slots.length ? "Tracked on this phone" : "No slot pool");
+    if (slots.length) {
+      var importSlots = create("button", "slot-import-button", "Import from Foundry");
+      importSlots.type = "button";
+      importSlots.dataset.action = "import-spell-slots";
+      slotHeading.appendChild(importSlots);
+    }
+    fragment.appendChild(slotHeading);
     var slotGrid = create("div", "spell-slot-grid");
     slots.forEach(function (slot) {
-      var card = create("section", "spell-slot-card" + (slot.value > 0 ? " slot-ready" : " slot-empty"));
+      var localValue = localSlotValue(slot.key, slot);
+      var card = create("section", "spell-slot-card" + (localValue > 0 ? " slot-ready" : " slot-empty"));
       var slotHead = create("div", "spell-slot-head");
       var emblem = create("span", "slot-level-emblem", slot.pact ? "P" : String(slot.level));
       emblem.setAttribute("aria-hidden", "true");
@@ -1110,16 +1324,35 @@
       slotCopy.appendChild(create("small", "", slot.pact ? "Pact magic" : "Spell level"));
       slotCopy.appendChild(create("strong", "", slot.pact ? "Level " + slot.level : "Level " + slot.level));
       slotHead.appendChild(slotCopy);
-      slotHead.appendChild(create("span", "slot-count", slot.value + "/" + slot.max));
+      slotHead.appendChild(create("span", "slot-count", localValue + "/" + slot.max));
       card.appendChild(slotHead);
       var pips = create("span", "slot-pips");
-      pips.setAttribute("aria-label", slot.value + " of " + slot.max + " spell slots available");
+      pips.setAttribute("aria-label", localValue + " of " + slot.max + " spell slots available");
       for (var index = 0; index < slot.max; index += 1) {
-        var pip = create("i", index < slot.value ? "available" : "spent");
+        var pip = create("button", index < localValue ? "available" : "spent");
+        pip.type = "button";
+        pip.dataset.action = "set-spell-slot";
+        pip.dataset.value = slot.key;
+        pip.dataset.amount = String(index < localValue ? localValue - 1 : index + 1);
         pip.appendChild(create("b", "", "✦"));
         pips.appendChild(pip);
       }
       card.appendChild(pips);
+      var controls = create("div", "slot-stepper");
+      var spend = create("button", "", "−");
+      spend.type = "button";
+      spend.dataset.action = "change-spell-slot";
+      spend.dataset.value = slot.key;
+      spend.dataset.amount = "-1";
+      spend.disabled = localValue < 1;
+      var restore = create("button", "", "+");
+      restore.type = "button";
+      restore.dataset.action = "change-spell-slot";
+      restore.dataset.value = slot.key;
+      restore.dataset.amount = "1";
+      restore.disabled = localValue >= Number(slot.max || 0);
+      controls.append(spend, restore);
+      card.appendChild(controls);
       slotGrid.appendChild(card);
     });
     if (!slots.length) slotGrid.appendChild(emptyState("This character has no prepared spell-slot pool. Cantrips and innate spells still appear below."));
@@ -1131,7 +1364,7 @@
     var levels = Array.from(new Set(spells.map(function (spell) { return Number(spell.spellLevel || 0); })));
     levels.forEach(function (level) {
       var matchingSlots = slots.filter(function (slot) { return Number(slot.level) === level; });
-      var slotDetail = matchingSlots.map(function (slot) { return slot.value + "/" + slot.max + (slot.pact ? " pact" : " slots"); }).join(" · ");
+      var slotDetail = matchingSlots.map(function (slot) { return localSlotValue(slot.key, slot) + "/" + slot.max + (slot.pact ? " pact" : " slots"); }).join(" · ");
       fragment.appendChild(sectionHeading(level === 0 ? "Cantrips" : "Level " + level, level === 0 ? "At will" : slotDetail || "Spell level"));
       var list = create("div", "action-list spell-level-list");
       spells.filter(function (spell) { return Number(spell.spellLevel || 0) === level; }).forEach(function (spell) {
@@ -1143,34 +1376,70 @@
     elements.viewContent.replaceChildren(fragment);
   }
 
-  function renderEffects() {
+  function renderEquipment() {
     var actor = state.snapshot.actor;
-    var effects = actor.effects || [];
+    var equipmentTypes = new Set(["weapon", "equipment", "consumable", "tool", "loot", "container", "backpack"]);
+    var equipment = (actor.actions || []).filter(function (item) { return equipmentTypes.has(item.type); });
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("Character state", "Active effects", "Conditions, spell effects, and feature effects currently applied in Foundry."));
+    fragment.appendChild(pageTitle("Carried into the story", "Equipment", "Weapons, armor, tools, provisions, and treasured belongings from your Foundry inventory."));
     var picker = characterPicker();
     if (picker) fragment.appendChild(picker);
-    fragment.appendChild(sectionHeading("In effect now", effects.length + (effects.length === 1 ? " effect" : " effects")));
-    var list = create("div", "effect-list");
-    effects.forEach(function (effect) {
-      var card = create("section", "effect-card");
-      if (effect.image) {
-        var image = document.createElement("img");
-        image.src = effect.image;
-        image.alt = "";
-        image.loading = "lazy";
-        card.appendChild(image);
-      } else card.appendChild(create("span", "effect-mark", "◈"));
-      var copy = create("div", "effect-copy");
-      copy.appendChild(create("h3", "", effect.name || "Effect"));
-      var meta = (effect.statuses || []).concat([effect.duration, effect.source].filter(Boolean));
-      if (meta.length) copy.appendChild(create("p", "effect-meta", meta.join(" · ")));
-      card.appendChild(copy);
-      if (effect.description) card.appendChild(create("p", "effect-description", effect.description));
-      list.appendChild(card);
+    var summary = create("section", "equipment-summary");
+    summary.appendChild(create("span", "equipment-sigil", "⚔"));
+    var summaryCopy = create("div");
+    summaryCopy.appendChild(create("small", "eyebrow", "Inventory"));
+    summaryCopy.appendChild(create("strong", "", equipment.length + (equipment.length === 1 ? " carried entry" : " carried entries")));
+    summaryCopy.appendChild(create("span", "", state.worldActive ? "Usable items can update Foundry while the world is active." : "Gear remains readable while the world sleeps."));
+    summary.appendChild(summaryCopy);
+    fragment.appendChild(summary);
+
+    var groups = [
+      { key: "weapon", label: "Weapons" },
+      { key: "equipment", label: "Armor & Equipment" },
+      { key: "consumable", label: "Consumables" },
+      { key: "tool", label: "Tools" },
+      { key: "other", label: "Packs & Treasures" }
+    ];
+    groups.forEach(function (group) {
+      var entries = equipment.filter(function (item) {
+        return group.key === "other" ? ["loot", "container", "backpack"].includes(item.type) : item.type === group.key;
+      });
+      if (!entries.length) return;
+      fragment.appendChild(sectionHeading(group.label, entries.length + (entries.length === 1 ? " item" : " items")));
+      var list = create("div", "equipment-list");
+      entries.forEach(function (item) {
+        var card = create("article", "equipment-card" + (item.equipped ? " equipped" : ""));
+        var info = create("button", "equipment-info");
+        info.type = "button";
+        info.dataset.action = "open-item";
+        info.dataset.value = item.uuid;
+        if (item.image) {
+          var image = document.createElement("img");
+          image.src = item.image;
+          image.alt = "";
+          image.loading = "lazy";
+          info.appendChild(image);
+        } else info.appendChild(create("span", "equipment-image-fallback", "◇"));
+        var copy = create("span", "equipment-copy");
+        copy.appendChild(create("strong", "", item.name));
+        copy.appendChild(create("small", "", [item.subtitle || item.type, Number(item.quantity || 0) > 1 ? "Qty " + item.quantity : "", item.equipped ? "Equipped" : "", item.attuned ? "Attuned" : ""].filter(Boolean).join(" · ")));
+        info.appendChild(copy);
+        info.appendChild(create("span", "item-chevron", "›"));
+        card.appendChild(info);
+        if (item.canConsume) {
+          var use = create("button", "equipment-use", "Use");
+          use.type = "button";
+          use.dataset.action = "consume-item";
+          use.dataset.value = item.uuid;
+          use.dataset.label = item.name;
+          use.disabled = !state.worldActive;
+          card.appendChild(use);
+        }
+        list.appendChild(card);
+      });
+      fragment.appendChild(list);
     });
-    if (!effects.length) list.appendChild(emptyState("No active effects are currently applied to this character."));
-    fragment.appendChild(list);
+    if (!equipment.length) fragment.appendChild(emptyState("No equipment was included in this character’s last Foundry sync."));
     elements.viewContent.replaceChildren(fragment);
   }
 
@@ -1195,7 +1464,7 @@
       back.type = "button";
       back.dataset.action = "journal-back";
       reader.appendChild(back);
-      reader.appendChild(create("p", "eyebrow", "Shared by your GM"));
+      reader.appendChild(create("p", "eyebrow", journal.local ? "Your private note" : "Shared by your GM"));
       reader.appendChild(create("h2", "", journal.title));
       reader.appendChild(create("p", "summary", journal.summary || ""));
       if (journal.image) {
@@ -1210,12 +1479,109 @@
       return;
     }
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("Your record", "Journal", "Only notes your GM shared with you appear here."));
-    var list = create("div", "journal-list");
-    state.snapshot.journals.forEach(function (journal, index) { list.appendChild(journalCard(journal, index)); });
-    if (!state.snapshot.journals.length) list.appendChild(emptyState("Nothing has been shared here yet."));
-    fragment.appendChild(list);
+    fragment.appendChild(pageTitle("Your living record", "Journal", "Write private notes on this phone or read entries shared by your Dungeon Master."));
+    var modes = create("div", "journal-modes");
+    [["mine", "My Notes", "Written on this phone"], ["shared", "From the DM", "Shared from Foundry"]].forEach(function (entry) {
+      var mode = create("button", state.journalMode === entry[0] ? "active" : "");
+      mode.type = "button";
+      mode.dataset.action = "journal-mode";
+      mode.dataset.value = entry[0];
+      mode.appendChild(create("span", "journal-mode-sigil", entry[0] === "mine" ? "✎" : "▤"));
+      var copy = create("span", "");
+      copy.appendChild(create("strong", "", entry[1]));
+      copy.appendChild(create("small", "", entry[2]));
+      mode.appendChild(copy);
+      modes.appendChild(mode);
+    });
+    fragment.appendChild(modes);
+
+    if (state.journalMode === "mine") {
+      var notes = readLocalJournals();
+      var editing = notes.find(function (note) { return note.id === state.editJournalId; });
+      var form = create("form", "journal-write-card");
+      form.dataset.form = "local-journal";
+      form.appendChild(create("p", "eyebrow", editing ? "Edit your entry" : "Write a new entry"));
+      var title = document.createElement("input");
+      title.name = "title";
+      title.placeholder = "Entry title";
+      title.maxLength = 120;
+      title.required = true;
+      title.value = editing ? editing.title : "";
+      var body = document.createElement("textarea");
+      body.name = "content";
+      body.rows = 7;
+      body.placeholder = "What do you want to remember?";
+      body.maxLength = 12000;
+      body.required = true;
+      body.value = editing ? editing.content : "";
+      form.append(title, body);
+      var formActions = create("div", "journal-write-actions");
+      formActions.appendChild(submitButton(editing ? "Save changes" : "Save note"));
+      if (editing) {
+        var cancel = create("button", "secondary-button", "Cancel");
+        cancel.type = "button";
+        cancel.dataset.action = "cancel-journal-edit";
+        formActions.appendChild(cancel);
+      }
+      form.appendChild(formActions);
+      fragment.appendChild(form);
+      fragment.appendChild(sectionHeading("Your entries", notes.length + (notes.length === 1 ? " note" : " notes")));
+      var localList = create("div", "journal-list local-journal-list");
+      notes.forEach(function (note, index) { localList.appendChild(localJournalCard(note, index)); });
+      if (!notes.length) localList.appendChild(emptyState("Your first private note will appear here."));
+      fragment.appendChild(localList);
+    } else {
+      fragment.appendChild(sectionHeading("Shared entries", state.snapshot.journals.length + (state.snapshot.journals.length === 1 ? " entry" : " entries")));
+      var list = create("div", "journal-list");
+      state.snapshot.journals.forEach(function (journal, index) { list.appendChild(journalCard(journal, index)); });
+      if (!state.snapshot.journals.length) list.appendChild(emptyState("Nothing has been shared here yet."));
+      fragment.appendChild(list);
+    }
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function localJournalKey() {
+    return [state.snapshot && state.snapshot.campaign.id, state.account && state.account.id, state.snapshot && state.snapshot.actor.uuid].filter(Boolean).join("::");
+  }
+
+  function readLocalJournals() {
+    try {
+      var all = JSON.parse(window.localStorage.getItem(JOURNAL_STORAGE) || "{}");
+      var notes = all[localJournalKey()] || [];
+      return Array.isArray(notes) ? notes.sort(function (a, b) { return Number(b.updatedAt || 0) - Number(a.updatedAt || 0); }) : [];
+    } catch { return []; }
+  }
+
+  function writeLocalJournals(notes) {
+    var all = {};
+    try { all = JSON.parse(window.localStorage.getItem(JOURNAL_STORAGE) || "{}"); } catch { all = {}; }
+    all[localJournalKey()] = notes;
+    try { window.localStorage.setItem(JOURNAL_STORAGE, JSON.stringify(all)); return true; }
+    catch { showToast("This phone could not save more journal text. Try shortening an older entry.", 5800); return false; }
+  }
+
+  function localJournalCard(note, index) {
+    var card = create("article", "local-journal-card");
+    var open = create("button", "local-journal-open");
+    open.type = "button";
+    open.dataset.action = "open-local-journal";
+    open.dataset.value = note.id;
+    open.appendChild(create("span", "journal-number", String(index + 1).padStart(2, "0")));
+    var copy = create("span", "");
+    copy.appendChild(create("strong", "", note.title));
+    copy.appendChild(create("small", "", String(note.content || "").slice(0, 100) || "Open note"));
+    open.appendChild(copy);
+    card.appendChild(open);
+    var actions = create("div", "local-journal-actions");
+    [["edit-local-journal", "Edit"], ["delete-local-journal", "Delete"]].forEach(function (entry) {
+      var button = create("button", "", entry[1]);
+      button.type = "button";
+      button.dataset.action = entry[0];
+      button.dataset.value = note.id;
+      actions.appendChild(button);
+    });
+    card.appendChild(actions);
+    return card;
   }
 
   function journalCard(journal, index) {
@@ -1232,9 +1598,114 @@
     return button;
   }
 
+  async function loadPocketMessages(silent) {
+    if (!state.snapshot || state.chatLoading) return;
+    state.chatLoading = true;
+    if (!silent && state.tab === "chat") renderChat();
+    var query = "/api/messages?channel=" + encodeURIComponent(state.chatChannel);
+    if (state.chatChannel === "dm" && state.chatRecipientId) query += "&recipient=" + encodeURIComponent(state.chatRecipientId);
+    var result = await api(query);
+    state.chatLoading = false;
+    if (result.ok) {
+      state.chatContacts = result.data.contacts || [];
+      if (state.chatChannel === "dm" && !state.chatContacts.some(function (contact) { return contact.id === state.chatRecipientId; })) {
+        state.chatRecipientId = state.chatContacts[0] ? state.chatContacts[0].id : "";
+        if (state.chatRecipientId && !result.data.recipientAccountId) {
+          if (state.tab === "chat") renderChat();
+          state.chatLoading = false;
+          void loadPocketMessages(true);
+          return;
+        }
+      }
+      state.chatMessages = result.data.messages || [];
+    }
+    else if (!silent) showToast(result.data.error || "Pocket Chat could not refresh yet.", 4400);
+    if (state.tab === "chat") renderChat();
+  }
+
   function renderChat() {
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("At the table", "Chat & dice", "Dice roll privately on this phone; messages still travel to the table."));
+    fragment.appendChild(pageTitle("Pocket correspondence", "Chat", "Party and private player conversations that remain available while Foundry sleeps."));
+    var channels = create("div", "chat-channels");
+    [["group", "Party chat", "Everyone in this campaign"], ["dm", "Direct messages", "Private player to player"]].forEach(function (entry) {
+      var button = create("button", state.chatChannel === entry[0] ? "active" : "");
+      button.type = "button";
+      button.dataset.action = "chat-channel";
+      button.dataset.value = entry[0];
+      button.appendChild(create("span", "chat-channel-sigil", entry[0] === "group" ? "❧" : "✉"));
+      var copy = create("span", "");
+      copy.appendChild(create("strong", "", entry[1]));
+      copy.appendChild(create("small", "", entry[2]));
+      button.appendChild(copy);
+      channels.appendChild(button);
+    });
+    fragment.appendChild(channels);
+
+    var selectedContact = state.chatContacts.find(function (contact) { return contact.id === state.chatRecipientId; });
+    if (state.chatChannel === "dm") {
+      var recipientLabel = create("label", "chat-recipient-field");
+      recipientLabel.appendChild(create("span", "eyebrow", "Private conversation with"));
+      var recipientSelect = document.createElement("select");
+      recipientSelect.id = "chat-player-picker";
+      recipientSelect.setAttribute("aria-label", "Choose another player");
+      if (!state.chatContacts.length) {
+        var emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "No other connected players yet";
+        recipientSelect.appendChild(emptyOption);
+        recipientSelect.disabled = true;
+      } else state.chatContacts.forEach(function (contact) {
+        var option = document.createElement("option");
+        option.value = contact.id;
+        option.textContent = contact.label;
+        option.selected = contact.id === state.chatRecipientId;
+        recipientSelect.appendChild(option);
+      });
+      recipientLabel.appendChild(recipientSelect);
+      fragment.appendChild(recipientLabel);
+    }
+
+    var chatHeading = sectionHeading(state.chatChannel === "group" ? "Party conversation" : selectedContact ? "Messages with " + selectedContact.label : "Choose a player", state.chatLoading ? "Refreshing…" : "Pocket Chronicle");
+    var refresh = create("button", "chat-refresh", "Refresh");
+    refresh.type = "button";
+    refresh.dataset.action = "refresh-chat";
+    chatHeading.appendChild(refresh);
+    fragment.appendChild(chatHeading);
+    var tableMessages = create("div", "message-list pocket-message-list");
+    state.chatMessages.forEach(function (message) {
+      var card = create("article", "message" + (message.mine ? " mine" : ""));
+      var header = document.createElement("header");
+      header.appendChild(create("strong", "", message.author));
+      header.appendChild(create("span", "", formatTime(message.timestamp)));
+      card.appendChild(header);
+      card.appendChild(create("p", "", message.content));
+      tableMessages.appendChild(card);
+    });
+    if (!state.chatMessages.length) tableMessages.appendChild(emptyState(state.chatLoading ? "Opening the correspondence…" : "No messages in this channel yet."));
+    fragment.appendChild(tableMessages);
+
+    var form = create("form", "chat-form pocket-chat-form");
+    form.dataset.form = "pocket-chat";
+    var input = document.createElement("textarea");
+    input.id = "chat-message";
+    input.rows = 2;
+    input.placeholder = state.chatChannel === "group" ? "Message the party…" : selectedContact ? "Message " + selectedContact.label + " privately…" : "Choose another player first…";
+    input.setAttribute("aria-label", "Pocket Chat message");
+    input.required = true;
+    input.maxLength = 2000;
+    input.disabled = state.chatChannel === "dm" && !selectedContact;
+    var send = create("button", "", "Send");
+    send.type = "submit";
+    send.disabled = input.disabled;
+    form.appendChild(input);
+    form.appendChild(send);
+    fragment.appendChild(form);
+
+    var rollHistory = document.createElement("details");
+    rollHistory.className = "chat-roll-history";
+    var rollSummary = document.createElement("summary");
+    rollSummary.textContent = "Phone roll history";
+    rollHistory.appendChild(rollSummary);
     var dice = create("div", "dice-row");
     [4, 6, 8, 10, 12, 20].forEach(function (sides) {
       var button = create("button", "", "d" + sides);
@@ -1243,9 +1714,8 @@
       button.dataset.value = "1d" + sides;
       dice.appendChild(button);
     });
-    fragment.appendChild(dice);
+    rollHistory.appendChild(dice);
     var localRolls = readLocalRolls();
-    fragment.appendChild(sectionHeading("Phone roll history", localRolls.length ? "Newest first" : "No rolls yet"));
     var messages = create("div", "message-list");
     localRolls.forEach(function (roll) {
       var card = create("article", "message mine local-roll-message");
@@ -1259,41 +1729,26 @@
       messages.appendChild(card);
     });
     if (!localRolls.length) messages.appendChild(emptyState("Your local skill, attack, damage, and dice results will be kept here on this phone."));
-    fragment.appendChild(messages);
-
-    fragment.appendChild(sectionHeading("Foundry messages", "Newest first"));
-    var tableMessages = create("div", "message-list");
-    state.snapshot.messages.forEach(function (message) {
-      var card = create("article", "message");
-      var header = document.createElement("header");
-      header.appendChild(create("strong", "", message.author));
-      header.appendChild(create("span", "", formatTime(message.timestamp)));
-      card.appendChild(header);
-      card.appendChild(create("p", "", message.content));
-      if (message.rollTotal !== undefined && message.rollTotal !== null) card.appendChild(create("strong", "roll-total", String(message.rollTotal)));
-      tableMessages.appendChild(card);
-    });
-    if (!state.snapshot.messages.length) tableMessages.appendChild(emptyState("No table messages yet."));
-    fragment.appendChild(tableMessages);
-    var form = create("form", "chat-form");
-    form.dataset.form = "chat";
-    var input = document.createElement("input");
-    input.id = "chat-message";
-    input.placeholder = "Message the table…";
-    input.setAttribute("aria-label", "Chat message");
-    input.required = true;
-    var send = create("button", "", "↑");
-    send.type = "submit";
-    send.setAttribute("aria-label", "Send message");
-    form.appendChild(input);
-    form.appendChild(send);
-    fragment.appendChild(form);
+    rollHistory.appendChild(messages);
+    fragment.appendChild(rollHistory);
     elements.viewContent.replaceChildren(fragment);
   }
 
   function renderShop() {
     var fragment = document.createDocumentFragment();
-    fragment.appendChild(pageTitle("GM curated", "Campaign shop", "Purchases deduct your character’s Foundry currency and arrive in inventory."));
+    fragment.appendChild(pageTitle("GM curated", "Campaign shop", state.worldActive
+      ? "The doors are open. Purchases deduct Foundry currency and arrive in inventory."
+      : "The shop opens only while the GM’s world and Bridge are active."));
+    if (!state.worldActive) {
+      var closed = create("section", "shop-closed-card");
+      closed.appendChild(create("span", "shop-closed-sigil", "♜"));
+      var closedCopy = create("div");
+      closedCopy.appendChild(create("small", "eyebrow", "Sleeping World"));
+      closedCopy.appendChild(create("strong", "", "The shop is closed"));
+      closedCopy.appendChild(create("p", "", "Browse your saved equipment now. Return when the GM starts the session to purchase from the live inventory."));
+      closed.appendChild(closedCopy);
+      fragment.appendChild(closed);
+    }
     var wallet = create("section", "shop-wallet");
     wallet.appendChild(create("small", "eyebrow", "Current wallet"));
     wallet.appendChild(create("strong", "", formatCurrency(state.snapshot.actor.currency || {})));
@@ -1311,6 +1766,7 @@
       button.dataset.action = "purchase";
       button.dataset.value = item.uuid;
       button.dataset.label = item.name;
+      button.disabled = !state.worldActive;
       card.appendChild(button);
       list.appendChild(card);
     });
@@ -1380,6 +1836,28 @@
     } else if (action === "journal-back") {
       state.selectedJournal = null;
       renderJournal();
+    } else if (action === "journal-mode") {
+      state.journalMode = button.dataset.value === "shared" ? "shared" : "mine";
+      state.selectedJournal = null;
+      state.editJournalId = "";
+      renderJournal();
+    } else if (action === "open-local-journal") {
+      var note = readLocalJournals().find(function (entry) { return entry.id === button.dataset.value; });
+      if (note) {
+        state.selectedJournal = { local: true, uuid: note.id, title: note.title, summary: new Date(note.updatedAt).toLocaleString(), content: note.content };
+        renderJournal();
+      }
+    } else if (action === "edit-local-journal") {
+      state.editJournalId = button.dataset.value;
+      renderJournal();
+    } else if (action === "cancel-journal-edit") {
+      state.editJournalId = "";
+      renderJournal();
+    } else if (action === "delete-local-journal") {
+      if (!window.confirm("Delete this private journal entry from this phone?")) return;
+      writeLocalJournals(readLocalJournals().filter(function (entry) { return entry.id !== button.dataset.value; }));
+      if (state.editJournalId === button.dataset.value) state.editJournalId = "";
+      renderJournal();
     } else if (action === "roll-formula") {
       rollLocalFormula(button.dataset.value, button.dataset.value, "die");
     } else if (action === "roll-ability") {
@@ -1404,10 +1882,37 @@
       renderCharacter();
     } else if (action === "open-item") {
       openItemDetails(button.dataset.value);
-    } else if (action === "level-up") {
-      sendAction("requestLevelUp", {}, "Your character edit or level-up request was sent.");
     } else if (action === "open-rest") {
-      openRestPanel();
+      openRestPanel(button.dataset.value || "short");
+    } else if (action === "set-stress") {
+      var stressLevel = Math.max(0, Math.min(6, Number(button.dataset.value || 0)));
+      if (stressLevel === 6 && !window.confirm("Stress level 6 is fatal and will reduce this character to 0 HP. Apply it?")) return;
+      sendAction("setExhaustion", { value: stressLevel }, stressLevel === 6 ? "Stress level 6 applied." : "Stress updated to level " + stressLevel + ".");
+    } else if (action === "refresh-world") {
+      button.disabled = true;
+      loadState(true).finally(function () { button.disabled = false; });
+    } else if (action === "change-spell-slot") {
+      changeLocalSpellSlot(button.dataset.value, Number(button.dataset.amount || 0));
+      renderSpells();
+    } else if (action === "set-spell-slot") {
+      var slot = (state.snapshot.actor.spellSlots || []).find(function (entry) { return entry.key === button.dataset.value; });
+      if (slot) {
+        var current = localSlotValue(slot.key, slot);
+        changeLocalSpellSlot(slot.key, Number(button.dataset.amount || 0) - current);
+        renderSpells();
+      }
+    } else if (action === "import-spell-slots") {
+      localSpellSlots(true);
+      renderSpells();
+      showToast("Spell slots imported from the latest Foundry copy.", 3800);
+    } else if (action === "chat-channel") {
+      state.chatChannel = button.dataset.value === "dm" ? "dm" : "group";
+      if (state.chatChannel === "dm" && !state.chatRecipientId && state.chatContacts[0]) state.chatRecipientId = state.chatContacts[0].id;
+      state.chatMessages = [];
+      renderChat();
+      void loadPocketMessages(true);
+    } else if (action === "refresh-chat") {
+      void loadPocketMessages();
     } else if (action === "purchase") {
       button.disabled = true;
       sendAction("purchase", { itemUuid: button.dataset.value, quantity: 1 }, (button.dataset.label || "Item") + " purchased and added to inventory.").then(function () { button.disabled = false; });
@@ -1417,11 +1922,38 @@
   function handleAppSubmit(event) {
     event.preventDefault();
     var form = event.target;
-    if (form.dataset.form === "chat") {
+    if (form.dataset.form === "pocket-chat") {
       var input = form.querySelector("#chat-message");
       var content = input.value.trim();
       if (!content) return;
-      sendAction("chat", { content: content }, "Message sent to the table.").then(function (ok) { if (ok) input.value = ""; });
+      var submit = form.querySelector("button[type='submit']");
+      submit.disabled = true;
+      post("/api/messages", { channel: state.chatChannel, recipientAccountId: state.chatChannel === "dm" ? state.chatRecipientId : "", content: content }).then(function (result) {
+        submit.disabled = false;
+        if (!result.ok) {
+          showToast(result.data.error || "That Pocket Chat message could not be sent.", 4800);
+          return;
+        }
+        input.value = "";
+        state.chatMessages.push(result.data.message);
+        renderChat();
+      });
+    } else if (form.dataset.form === "local-journal") {
+      var notes = readLocalJournals();
+      var journalTitle = String(form.elements.title.value || "").trim();
+      var journalContent = String(form.elements.content.value || "").trim();
+      if (!journalTitle || !journalContent) return;
+      var existing = notes.find(function (entry) { return entry.id === state.editJournalId; });
+      if (existing) {
+        existing.title = journalTitle;
+        existing.content = journalContent;
+        existing.updatedAt = Date.now();
+      } else notes.unshift({ id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8), title: journalTitle, content: journalContent, updatedAt: Date.now() });
+      if (writeLocalJournals(notes)) {
+        state.editJournalId = "";
+        renderJournal();
+        showToast(existing ? "Journal entry updated." : "Journal entry saved on this phone.", 3400);
+      }
     } else if (form.dataset.form === "hp-damage" || form.dataset.form === "hp-healing") {
       var hpInput = form.querySelector("input[name='amount']");
       var amount = Number(hpInput.value);
@@ -1442,22 +1974,25 @@
         return;
       }
       sendAction("setTempHp", { value: tempValue }, "Temporary HP updated in Foundry.");
-    } else if (form.dataset.form === "biography") {
-      var biography = form.querySelector("#biography").value;
-      sendAction("updateBiography", { biography: biography }, "Biography update sent to Foundry.");
     }
   }
 
   function handleAppChange(event) {
-    if (event.target.id !== "character-picker") return;
-    window.localStorage.setItem(CHARACTER_STORAGE, event.target.value);
-    loadState();
+    if (event.target.id === "character-picker") {
+      window.localStorage.setItem(CHARACTER_STORAGE, event.target.value);
+      loadState();
+    } else if (event.target.id === "chat-player-picker") {
+      state.chatRecipientId = event.target.value;
+      state.chatMessages = [];
+      renderChat();
+      void loadPocketMessages(true);
+    }
   }
 
   async function sendAction(kind, payload, success, options) {
     options = options || {};
     if (!state.snapshot) return false;
-    if (!state.bridgeOnline) {
+    if (!state.worldActive) {
       if (options.silentOffline) return false;
       showToast(options.quiet ? "The roll stays in your phone history, but Foundry is asleep so the sheet could not be updated." : "Foundry is sleeping. Saved sheets and journals still work; sheet edits resume when the GM opens the world.", 5600);
       return false;
@@ -1470,6 +2005,7 @@
     if (!result.ok) {
       if (result.status === 503) {
         state.bridgeOnline = false;
+        state.worldActive = false;
         updateStatus();
       }
       if (!options.quiet) showToast(result.data.error || "Foundry could not receive that action yet.", 5000);
@@ -1718,12 +2254,13 @@
   }
 
   async function rollLocalFormula(label, formula, kind) {
-    var result = evaluateLocalFormula(formula);
+    var adjustedFormula = stressAdjustedFormula(formula, kind);
+    var result = evaluateLocalFormula(adjustedFormula);
     if (!result) {
       showToast("That roll formula is not available on this phone yet.", 4200);
       return null;
     }
-    var roll = makeLocalRoll(label, formula, kind, result);
+    var roll = makeLocalRoll(label, adjustedFormula, kind, result);
     writeLocalRoll(roll);
     showRollResult(roll);
     mirrorRollToDiceSoNice(roll);
@@ -1753,13 +2290,13 @@
   }
 
   function mirrorDiceToDiceSoNice(dice) {
-    if (!dice.length) return;
-    void sendAction("showDice", { dice: dice }, "", { quiet: true, silentOffline: true, skipRefresh: true });
+    void dice;
   }
 
   async function rollActivitySequence(label, entries) {
     var prepared = (entries || []).map(function (entry) {
-      return { entry: entry, test: evaluateLocalFormula(entry.formula) };
+      var formula = stressAdjustedFormula(entry.formula, entry.kind);
+      return { entry: Object.assign({}, entry, { formula: formula }), test: evaluateLocalFormula(formula) };
     }).filter(function (row) { return row.test; });
     if (!prepared.length) {
       showToast("This activity does not have a usable phone roll formula. Its Foundry automation is still shown in the activity details.", 5200);
@@ -1778,6 +2315,13 @@
     mirrorDiceToDiceSoNice(rolls.flatMap(function (roll) { return roll.dice || []; }));
     if (state.tab === "chat") renderChat();
     return rolls;
+  }
+
+  function stressAdjustedFormula(formula, kind) {
+    var d20Kinds = new Set(["ability", "save", "skill", "initiative", "attack", "death-save"]);
+    var level = Math.max(0, Math.min(6, Number(state.snapshot && state.snapshot.actor.exhaustion || 0)));
+    if (!level || !d20Kinds.has(kind) || !/d20/i.test(String(formula || ""))) return String(formula || "");
+    return String(formula || "") + "-" + (level * 2);
   }
 
   function readLocalRolls() {
@@ -1964,7 +2508,14 @@
         card.appendChild(automation);
       }
 
-      var castOptions = activity.castOptions || [];
+      var castOptions = (activity.castOptions || []).map(function (castOption) {
+        if (!castOption.slotKey) return Object.assign({}, castOption);
+        var localValue = localSlotValue(castOption.slotKey, castOption);
+        return Object.assign({}, castOption, {
+          value: localValue,
+          label: (castOption.pact ? "Pact slot · Level " : "Level ") + castOption.level + " · " + localValue + "/" + castOption.max
+        });
+      });
       var castSelect = null;
       if (item.category === "spell" && castOptions.length) {
         var castLabel = create("label", "activity-cast-level");
@@ -2038,6 +2589,16 @@
           use.disabled = noSlot;
           use.addEventListener("click", function () {
             closeSettings();
+            if (item.category === "spell" && selectedOption.slotKey) {
+              changeLocalSpellSlot(selectedOption.slotKey, -1);
+              showToast(item.name + " cast at level " + selectedOption.level + ". Spell slot spent on this phone.", 4300);
+              if (state.tab === "spells") renderSpells();
+              return;
+            }
+            if (item.category === "spell") {
+              showToast(item.name + " cast. No spell slot was required.", 3600);
+              return;
+            }
             sendAction("consumeItem", {
               itemUuid: item.uuid,
               activityId: activity.id,

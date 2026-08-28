@@ -1,16 +1,43 @@
-// Pocket Chronicle is an online Foundry companion. This worker exists only to
-// keep the app installable and to remove caches created by older releases. It
-// deliberately does not intercept navigation, JavaScript, API, or asset
-// requests; every launch comes from the current deployment.
-self.addEventListener("install", () => {
+const CACHE = "pocket-chronicle-v0140-2";
+const SHELL = [
+  "/mobile.html",
+  "/mobile.css?v=18",
+  "/mobile.js?v=18",
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/icon-180.png",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).catch(() => undefined));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key.startsWith("pocket-chronicle-")).map((key) => caches.delete(key))),
-    ),
+    caches.keys().then((keys) => Promise.all(keys
+      .filter((key) => key.startsWith("pocket-chronicle-") && key !== CACHE)
+      .map((key) => caches.delete(key)))),
   );
   self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  const isMobileNavigation = request.mode === "navigate" && (url.pathname === "/" || url.pathname === "/mobile.html");
+  const isShellAsset = ["/mobile.css", "/mobile.js", "/manifest.webmanifest", "/favicon.svg", "/icon-180.png"].includes(url.pathname);
+  if (!isMobileNavigation && !isShellAsset) return;
+  event.respondWith(fetch(request).then((response) => {
+    if (response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE).then((cache) => cache.put(request, copy));
+    }
+    return response;
+  }).catch(async () => {
+    const exact = await caches.match(request);
+    if (exact) return exact;
+    return caches.match("/mobile.html");
+  }));
 });

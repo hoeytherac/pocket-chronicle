@@ -18,6 +18,8 @@ export const campaigns = sqliteTable("campaigns", {
   bridgeKeyHash: text("bridge_key_hash").notNull(),
   pairingPasswordHash: text("pairing_password_hash"),
   status: text("status", { enum: ["active", "paused"] }).notNull().default("active"),
+  worldState: text("world_state", { enum: ["sleeping", "active"] }).notNull().default("sleeping"),
+  activeUntil: integer("active_until"),
   lastSeenAt: integer("last_seen_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
@@ -132,4 +134,19 @@ export const actions = sqliteTable("actions", {
 }, (table) => [
   index("actions_campaign_queue_idx").on(table.campaignId, table.status, table.createdAt),
   index("actions_actor_idx").on(table.actorUuid),
+]);
+
+export const chronicleMessages = sqliteTable("chronicle_messages", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  senderAccountId: text("sender_account_id").references(() => playerAccounts.id, { onDelete: "set null" }),
+  recipientAccountId: text("recipient_account_id").references(() => playerAccounts.id, { onDelete: "set null" }),
+  channel: text("channel", { enum: ["group", "dm"] }).notNull(),
+  authorLabel: text("author_label").notNull(),
+  content: text("content").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  index("chronicle_messages_campaign_channel_idx").on(table.campaignId, table.channel, table.createdAt),
+  index("chronicle_messages_sender_idx").on(table.senderAccountId, table.createdAt),
+  index("chronicle_messages_recipient_idx").on(table.recipientAccountId, table.createdAt),
 ]);

@@ -1,13 +1,23 @@
-/* Pocket Chronicle Bridge v0.13.2 */
+/* Pocket Chronicle Bridge v0.14.0 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
 const REST_RATIONS_ID = "pocket-chronicle-rest-rations";
+const PROVISION_FOLDER_NAME = "Pocket Chronicle — Rest & Rations";
+const BUILT_IN_PROVISIONS = [
+  { key: "hearty-feast", name: "Hearty Feast", kind: "food", tier: "great", price: { value: 1, denomination: "gp" }, image: "icons/consumables/food/plate-ribs-gravy.webp", effect: "Short rest: add proficiency bonus to every Hit Die spent. Long rest: gain 25 temporary HP." },
+  { key: "trail-rations", name: "Trail Rations", kind: "food", tier: "regular", price: { value: 5, denomination: "sp" }, image: "icons/consumables/food/berries-ration-round-red.webp", effect: "A dependable serving with no additional benefit or penalty." },
+  { key: "spoiled-provisions", name: "Spoiled Provisions", kind: "food", tier: "spoiled", price: { value: 1, denomination: "cp" }, image: "icons/consumables/food/meat-carcass-bone-brown.webp", effect: "After the rest, gain 2 levels of exhaustion." },
+  { key: "fresh-water", name: "Fresh Water", kind: "water", tier: "drinkable", price: { value: 1, denomination: "sp" }, image: "icons/consumables/potions/bottle-bulb-corked-blue.webp", effect: "Clean drinking water with no additional benefit or penalty." },
+  { key: "tainted-water", name: "Tainted Water", kind: "water", tier: "contaminated", price: { value: 1, denomination: "cp" }, image: "icons/consumables/potions/bottle-bulb-corked-green.webp", effect: "After the rest, gain 1 level of exhaustion." },
+];
 const REQUEST_TIMEOUT_MS = 10000;
 let bridgeOnline = false;
 let bridgeLastError = "";
 let bridgeStarted = false;
+let bridgeTimers = [];
+let bridgeLifecycleListenersBound = false;
 let activePhoneUserId = "";
 let activePhoneActorId = "";
 const displayedAccessRequests = new Set();
@@ -31,17 +41,24 @@ Hooks.once("init", () => {
     name: "POCKET.BridgeKey.Name", hint: "POCKET.BridgeKey.Hint", scope: "world", config: true, type: String, default: "",
   });
   game.settings.register(MODULE_ID, "pollMs", {
-    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 5000, range: { min: 2000, max: 10000, step: 500 },
+    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 15000, range: { min: 10000, max: 60000, step: 5000 },
+  });
+  game.settings.register(MODULE_ID, "worldActive", {
+    scope: "world", config: false, type: Boolean, default: false,
   });
   if (game.settings.get(MODULE_ID, "mapFree") && !game.settings.get("core", "noCanvas")) {
     void game.settings.set("core", "noCanvas", true);
   }
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.13.2",
+    version: "0.14.0",
+    startActiveWorld,
+    endActiveWorld,
+    syncNow: syncActiveWorld,
+    isWorldActive: () => Boolean(game.settings.get(MODULE_ID, "worldActive") && bridgeOnline),
     createPairing,
     createAccountPairing,
     checkPhoneRequests: pollAccessRequests,
@@ -63,6 +80,11 @@ Hooks.once("ready", () => {
       return removed;
     },
     openShopManager,
+    rebuildProvisions: async () => {
+      const items = await ensureBuiltInProvisions();
+      await pushAllSnapshots();
+      return items;
+    },
     shareJournal: async (uuid, shared = true) => {
       const journal = await fromUuid(uuid);
       if (!journal || journal.documentName !== "JournalEntry") throw new Error("Choose a Journal Entry.");
@@ -82,15 +104,25 @@ Hooks.once("ready", () => {
   Hooks.callAll("pocketChronicleBridgeReady", moduleRecord?.api);
 
   if (!game.user?.isGM) return;
-  startBridge();
+  try { await ensureBuiltInProvisions(); }
+  catch (error) {
+    console.error(`${MODULE_ID} | Could not prepare Rest & Rations`, error);
+    ui.notifications.warn(`Pocket Chronicle could not prepare Rest & Rations: ${error.message || error}`);
+  }
+  if (game.settings.get(MODULE_ID, "worldActive")) startBridge();
 });
 
 Hooks.on("updateActor", () => scheduleSnapshot());
 Hooks.on("updateItem", () => scheduleSnapshot());
-Hooks.on("createChatMessage", () => scheduleSnapshot());
 Hooks.on("updateJournalEntry", () => scheduleSnapshot());
 Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 Hooks.on("updateUser", () => scheduleSnapshot());
+Hooks.on("createCombat", () => scheduleSnapshot());
+Hooks.on("updateCombat", () => scheduleSnapshot());
+Hooks.on("deleteCombat", () => scheduleSnapshot());
+Hooks.on("createCombatant", () => scheduleSnapshot());
+Hooks.on("updateCombatant", () => scheduleSnapshot());
+Hooks.on("deleteCombatant", () => scheduleSnapshot());
 Hooks.on("renderSettingsConfig", (_application, html) => configureSettingsUi(html));
 Hooks.on("updateSetting", (setting) => {
   if (setting?.key !== `${MODULE_ID}.campaignCode`) return;
@@ -111,7 +143,7 @@ function isActiveBridgeHost() {
 }
 
 function shouldRun() {
-  return isActiveBridgeHost() && hasCompleteConfig();
+  return isActiveBridgeHost() && hasCompleteConfig() && Boolean(game.settings.get(MODULE_ID, "worldActive"));
 }
 
 function normalizeRelayUrl(value) {
@@ -137,7 +169,7 @@ function config() {
     campaignId: String(game.settings.get(MODULE_ID, "campaignId") || "").trim(),
     campaignCode: String(game.settings.get(MODULE_ID, "campaignCode") || "").trim().toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1"),
     bridgeKey: String(game.settings.get(MODULE_ID, "bridgeKey") || "").trim(),
-    pollMs: Math.max(2000, Number(game.settings.get(MODULE_ID, "pollMs")) || 5000),
+    pollMs: Math.max(10000, Number(game.settings.get(MODULE_ID, "pollMs")) || 15000),
   };
 }
 
@@ -163,29 +195,79 @@ function startBridge() {
   }
   bridgeStarted = true;
   const current = config();
-  void sendHeartbeat(true).then(async (connected) => {
+  void setRemoteWorldState(true).then(() => sendHeartbeat(true)).then(async (connected) => {
     if (!connected) return;
     await syncCampaignCode(true);
     await pushAllSnapshots();
     await pollAccessRequests();
   });
-  window.setInterval(() => void sendHeartbeat(), 10000);
-  window.setInterval(() => void pollActions(), current.pollMs);
-  window.setInterval(() => void pollAccessRequests(), current.pollMs);
-  window.setInterval(() => void pushAllSnapshots(), 30000);
-  window.addEventListener("focus", wakeBridge);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void wakeBridge();
-  });
-  window.addEventListener("online", wakeBridge);
+  bridgeTimers.push(window.setInterval(() => void sendHeartbeat(), 60000));
+  bridgeTimers.push(window.setInterval(() => void pollActions(), current.pollMs));
+  bridgeTimers.push(window.setInterval(() => void pollAccessRequests(), current.pollMs));
+  if (!bridgeLifecycleListenersBound) {
+    bridgeLifecycleListenersBound = true;
+    window.addEventListener("focus", wakeBridge);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void wakeBridge();
+    });
+    window.addEventListener("online", wakeBridge);
+  }
   console.info(`${MODULE_ID} | Active GM bridge started`);
+}
+
+function clearBridgeTimers() {
+  for (const timer of bridgeTimers) window.clearInterval(timer);
+  bridgeTimers = [];
+  bridgeStarted = false;
+}
+
+async function setRemoteWorldState(active) {
+  return bridgeFetch("/api/bridge/world-state", {
+    method: "POST",
+    body: JSON.stringify({ active: Boolean(active) }),
+  });
+}
+
+async function startActiveWorld() {
+  if (!game.user?.isGM) return false;
+  if (!hasCompleteConfig()) {
+    ui.notifications.error("Finish the Pocket Chronicle app address, Campaign ID, and bridge key before starting the session.");
+    return false;
+  }
+  await game.settings.set(MODULE_ID, "worldActive", true);
+  clearBridgeTimers();
+  startBridge();
+  return true;
+}
+
+async function syncActiveWorld(announce = true) {
+  if (!shouldRun()) {
+    if (announce) ui.notifications.warn("Start the Pocket Chronicle Active World before syncing.");
+    return false;
+  }
+  if (!bridgeOnline && !(await sendHeartbeat())) return false;
+  await Promise.allSettled([pushAllSnapshots(), pollActions(), pollAccessRequests()]);
+  if (announce) ui.notifications.info("Pocket Chronicle Active World synchronized.");
+  return true;
+}
+
+async function endActiveWorld() {
+  if (!game.user?.isGM) return false;
+  if (shouldRun() && bridgeOnline) await pushAllSnapshots();
+  try { if (hasCompleteConfig()) await setRemoteWorldState(false); }
+  catch (error) { console.debug(`${MODULE_ID} | Could not announce sleeping state`, error); }
+  await game.settings.set(MODULE_ID, "worldActive", false);
+  bridgeOnline = false;
+  clearBridgeTimers();
+  ui.notifications.info("Pocket Chronicle is sleeping. Shop, rests, and live character controls are closed.");
+  return true;
 }
 
 async function wakeBridge() {
   if (!shouldRun()) return;
   const connected = await sendHeartbeat();
   if (!connected) return;
-  await Promise.allSettled([pollActions(), pollAccessRequests(), pushAllSnapshots()]);
+  await Promise.allSettled([pollActions(), pollAccessRequests()]);
 }
 
 async function sendHeartbeat(announce = false) {
@@ -239,7 +321,7 @@ async function bridgeFetch(path, options = {}) {
 }
 
 async function syncCampaignCode(announce = false) {
-  if (!shouldRun()) return false;
+  if (!isActiveBridgeHost() || !hasCompleteConfig()) return false;
   const code = config().campaignCode;
   if (!/^[A-Z0-9]{6}$/.test(code)) {
     if (announce) ui.notifications.warn("Set a permanent six-character Campaign code using letters and numbers.");
@@ -261,8 +343,7 @@ async function syncCampaignCode(announce = false) {
 function scheduleCampaignCodeSync() {
   window.clearTimeout(scheduleCampaignCodeSync.pending);
   scheduleCampaignCodeSync.pending = window.setTimeout(async () => {
-    if (!shouldRun()) return;
-    if (!bridgeOnline && !(await sendHeartbeat())) return;
+    if (!isActiveBridgeHost() || !hasCompleteConfig()) return;
     await syncCampaignCode(true);
   }, 500);
 }
@@ -709,6 +790,13 @@ function availableExtensions() {
       });
     }
   }
+  if (!extensions.has("restRations")) {
+    extensions.set("restRations", {
+      actionKinds: ["takeRationsRest"],
+      getSnapshotData: builtInRestSnapshot,
+      executeAction: executeBuiltInRest,
+    });
+  }
   return extensions;
 }
 
@@ -863,6 +951,31 @@ function actorEffectData(actor) {
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function combatSnapshot() {
+  const combat = game.combat;
+  if (!combat) return { active: false, round: 0, turn: 0, combatants: [] };
+  const currentId = String(combat.combatant?.id || combat.current?.combatantId || "");
+  const combatants = collectionValues(combat.combatants).flatMap((combatant) => {
+    if (!combatant || combatant.hidden) return [];
+    return [{
+      id: String(combatant.id || combatant._id || ""),
+      name: String(combatant.name || combatant.actor?.name || "Unknown combatant"),
+      portrait: assetUrl(combatant.token?.texture?.src || combatant.actor?.img),
+      initiative: Number.isFinite(Number(combatant.initiative)) ? Number(combatant.initiative) : undefined,
+      active: String(combatant.id || combatant._id || "") === currentId,
+      defeated: Boolean(combatant.defeated),
+      actorUuid: combatant.actor?.uuid,
+    }];
+  });
+  return {
+    active: Boolean(combat.started),
+    round: Math.max(0, Number(combat.round || 0)),
+    turn: Math.max(0, Number(combat.turn || 0)),
+    currentName: combatants.find((entry) => entry.active)?.name,
+    combatants,
+  };
+}
+
 async function buildSnapshot(actor) {
   const system = actor.system || {};
   const classes = actor.items.filter((item) => item.type === "class");
@@ -912,14 +1025,6 @@ async function buildSnapshot(actor) {
   ));
   const journals = game.journal.filter((journal) => journal.getFlag(MODULE_ID, SHARED_FLAG));
   const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG));
-  const messages = game.messages.contents.slice(-25).map((message) => ({
-    id: message.id,
-    author: message.author?.name || message.speaker?.alias || "The Table",
-    content: plainText(message.content),
-    rollTotal: message.rolls?.[0]?.total,
-    timestamp: Number(message.timestamp || Date.now()),
-  }));
-
   return {
     campaign: { id: config().campaignId, name: game.world.title, edition: "personal" },
     actor: {
@@ -944,6 +1049,7 @@ async function buildSnapshot(actor) {
       speed: Number(system.attributes?.movement?.walk || 0),
       initiative: finiteNumber(system.attributes?.init?.mod, system.attributes?.init?.total),
       inspiration: Boolean(system.attributes?.inspiration),
+      exhaustion: Math.max(0, Math.min(6, finiteNumber(system.attributes?.exhaustion))),
       deathSaves: {
         successes: finiteNumber(system.attributes?.death?.success),
         failures: finiteNumber(system.attributes?.death?.failure),
@@ -965,6 +1071,9 @@ async function buildSnapshot(actor) {
           description: plainText(item.system?.description?.value || item.system?.description || ""),
           image: assetUrl(item.img),
           uses: item.system?.uses?.max ? `${item.system.uses.value}/${item.system.uses.max}` : undefined,
+          quantity: Math.max(0, finiteNumber(item.system?.quantity, 1)),
+          equipped: Boolean(item.system?.equipped),
+          attuned: Boolean(item.system?.attuned || Number(item.system?.attunement) === 2),
           spellLevel: item.type === "spell" ? Number(item.system?.level || 0) : undefined,
           rolls: itemLocalRolls(item, activities),
           activities,
@@ -980,11 +1089,12 @@ async function buildSnapshot(actor) {
       const content = pages.map((page) => plainText(page.text?.content || "")).filter(Boolean).join("\n\n");
       return { uuid: journal.uuid, title: journal.name, summary: content.slice(0, 180), content, image: assetUrl(pages.find((page) => page.src)?.src), updatedAt: Number(journal._stats?.modifiedTime || Date.now()) };
     })),
-    messages,
+    messages: [],
     shop: shop.map((item) => {
       const price = shopPrice(item);
       return { uuid: item.uuid, name: item.name, description: plainText(item.system?.description?.value || ""), price: price.value, currency: price.currency, image: assetUrl(item.img) };
     }),
+    combat: combatSnapshot(),
     extensions: await extensionSnapshotData(actor),
     session: { title: game.world.title, subtitle: "Shared from Foundry" },
     revision: 0,
@@ -1149,6 +1259,19 @@ async function executeAction(action) {
         result = { value };
         break;
       }
+      case "setExhaustion": {
+        const value = Math.max(0, Math.min(6, Math.floor(Number(action.payload.value))));
+        if (!Number.isInteger(value)) throw new Error("Stress must be a whole level from 0 to 6.");
+        const update = { "system.attributes.exhaustion": value };
+        if (value >= 6) update["system.attributes.hp.value"] = 0;
+        await actor.update(update, { pocketChronicle: true });
+        if (value >= 6 && typeof actor.toggleStatusEffect === "function") {
+          try { await actor.toggleStatusEffect("dead", { active: true }); }
+          catch (error) { console.debug(`${MODULE_ID} | Dead status marker was not available`, error); }
+        }
+        result = { value, penalty: value * -2, speedPenalty: value * -5, dead: value >= 6 };
+        break;
+      }
       case "chat":
         await ChatMessage.create({ ...messageData, content: foundry.utils.escapeHTML(String(action.payload.content || "").slice(0, 2000)) });
         break;
@@ -1273,6 +1396,173 @@ async function openShopManager() {
   return true;
 }
 
+function builtInProvisionData(provision) {
+  return {
+    name: provision.name,
+    type: "consumable",
+    img: provision.image,
+    system: {
+      description: { value: `<p><strong>${provision.name}</strong></p><p>${provision.effect}</p><p>One serving is consumed after a successful Pocket Chronicle rest.</p>`, chat: "" },
+      quantity: 1,
+      price: provision.price,
+      weight: { value: 0, units: "lb" },
+      rarity: "",
+      identified: true,
+      type: { value: "food", subtype: "" },
+      uses: { max: "", spent: 0, recovery: [], autoDestroy: false },
+      properties: [],
+      activities: {},
+    },
+    flags: {
+      [REST_RATIONS_ID]: {
+        provisionKey: provision.key,
+        kind: provision.kind,
+        tier: provision.tier,
+        effect: provision.effect,
+        permanentShop: true,
+      },
+      [MODULE_ID]: { [SHOP_FLAG]: true },
+    },
+  };
+}
+
+async function ensureBuiltInProvisions() {
+  if (!game.user?.isGM) return [];
+  let folder = game.folders.find((entry) => entry.type === "Item" && entry.getFlag(MODULE_ID, "provisionFolder"));
+  if (!folder) {
+    const FolderDocument = CONFIG.Folder?.documentClass;
+    if (typeof FolderDocument?.create !== "function") throw new Error("Foundry's Folder document API is unavailable.");
+    folder = await FolderDocument.create({
+      name: PROVISION_FOLDER_NAME,
+      type: "Item",
+      sorting: "a",
+      flags: { [MODULE_ID]: { provisionFolder: true } },
+    });
+  }
+  const ItemDocument = CONFIG.Item?.documentClass;
+  if (typeof ItemDocument?.create !== "function") throw new Error("Foundry's Item document API is unavailable.");
+  const items = [];
+  for (const provision of BUILT_IN_PROVISIONS) {
+    let item = game.items.find((entry) => entry.getFlag(REST_RATIONS_ID, "provisionKey") === provision.key);
+    if (!item) item = await ItemDocument.create({ ...builtInProvisionData(provision), folder: folder.id }, { renderSheet: false });
+    else {
+      const update = {};
+      if (!item.getFlag(MODULE_ID, SHOP_FLAG)) update[`flags.${MODULE_ID}.${SHOP_FLAG}`] = true;
+      if (!item.getFlag(REST_RATIONS_ID, "permanentShop")) update[`flags.${REST_RATIONS_ID}.permanentShop`] = true;
+      if (item.folder?.id !== folder.id) update.folder = folder.id;
+      if (Object.keys(update).length) await item.update(update, { pocketChronicle: true });
+    }
+    items.push(item);
+  }
+  return items;
+}
+
+function builtInHitDice(actor) {
+  const bySize = actor.system?.attributes?.hd?.bySize || {};
+  const maximums = {};
+  for (const cls of actor.items.filter((item) => item.type === "class")) {
+    const denomination = String(cls.system?.hd?.denomination || "");
+    if (!denomination) continue;
+    maximums[denomination] = (maximums[denomination] || 0) + Number(cls.system?.hd?.max || cls.system?.levels || 0);
+  }
+  return Object.entries(bySize).map(([denomination, value]) => ({
+    denomination,
+    value: Math.max(0, Number(value || 0)),
+    max: Math.max(Number(value || 0), Number(maximums[denomination] || 0)),
+  })).filter((pool) => pool.max > 0).sort((a, b) => Number(a.denomination.slice(1)) - Number(b.denomination.slice(1)));
+}
+
+function builtInRestSnapshot(actor) {
+  const inventory = actor.items.flatMap((item) => {
+    const key = item.getFlag(REST_RATIONS_ID, "provisionKey");
+    const quantity = Math.max(0, Number(item.system?.quantity || 0));
+    if (!key || quantity < 1) return [];
+    return [{
+      uuid: item.uuid,
+      key,
+      name: item.name,
+      kind: item.getFlag(REST_RATIONS_ID, "kind"),
+      tier: item.getFlag(REST_RATIONS_ID, "tier"),
+      quantity,
+      effect: item.getFlag(REST_RATIONS_ID, "effect") || "",
+    }];
+  });
+  const exemptions = actor.getFlag(REST_RATIONS_ID, "exemptions") || {};
+  return {
+    enabled: true,
+    food: inventory.filter((item) => item.kind === "food"),
+    water: inventory.filter((item) => item.kind === "water"),
+    hitDice: builtInHitDice(actor),
+    proficiencyBonus: Number(actor.system?.attributes?.prof || 0),
+    exemptions: { food: Boolean(exemptions.food), water: Boolean(exemptions.water) },
+  };
+}
+
+async function ownedBuiltInProvision(actor, uuid, expectedKind, exempt) {
+  if (exempt) return null;
+  const item = await fromUuid(String(uuid || ""));
+  if (!item || item.parent?.uuid !== actor.uuid || item.getFlag(REST_RATIONS_ID, "kind") !== expectedKind) throw new Error(`Choose a ${expectedKind} serving from this character's inventory.`);
+  if (Number(item.system?.quantity || 0) < 1) throw new Error(`${item.name} has no servings remaining.`);
+  return item;
+}
+
+function normalizedBuiltInHitDice(requested, actor) {
+  const available = Object.fromEntries(builtInHitDice(actor).map((pool) => [pool.denomination, pool.value]));
+  const combined = {};
+  for (const entry of Array.isArray(requested) ? requested : []) {
+    const denomination = String(entry?.denomination || "");
+    const count = Number(entry?.count || 0);
+    if (!/^d\d+$/i.test(denomination) || !Number.isInteger(count) || count < 0) throw new Error("Choose a valid number of Hit Dice.");
+    combined[denomination] = (combined[denomination] || 0) + count;
+  }
+  for (const [denomination, count] of Object.entries(combined)) {
+    if (count > Number(available[denomination] || 0)) throw new Error(`Only ${available[denomination] || 0} ${denomination} Hit Dice are available.`);
+  }
+  return combined;
+}
+
+async function executeBuiltInRest(action, context) {
+  const { actor, messageData } = context;
+  const restType = action.payload.restType === "long" ? "long" : "short";
+  const exemptions = actor.getFlag(REST_RATIONS_ID, "exemptions") || {};
+  const food = await ownedBuiltInProvision(actor, action.payload.foodItemUuid, "food", Boolean(exemptions.food));
+  const water = await ownedBuiltInProvision(actor, action.payload.waterItemUuid, "water", Boolean(exemptions.water));
+  const foodKey = food?.getFlag(REST_RATIONS_ID, "provisionKey") || "exempt";
+  const waterKey = water?.getFlag(REST_RATIONS_ID, "provisionKey") || "exempt";
+  const hearty = foodKey === "hearty-feast";
+  let diceSpent = 0;
+  let heartyBonus = 0;
+  if (restType === "short") {
+    const requested = normalizedBuiltInHitDice(action.payload.hitDice, actor);
+    for (const [denomination, count] of Object.entries(requested)) {
+      for (let index = 0; index < count; index += 1) {
+        const proficiencyBonus = Math.max(0, Number(actor.system?.attributes?.prof || 0));
+        const config = { denomination, hookNames: ["pocketChronicleRestRations"] };
+        if (hearty && proficiencyBonus) {
+          config.rolls = [{ parts: [String(proficiencyBonus)], data: {} }];
+          heartyBonus += proficiencyBonus;
+        }
+        const rolls = await actor.rollHitDie(config, { configure: false }, { data: { ...messageData, flavor: hearty ? `Hearty ${denomination} + PB` : `Rest ${denomination}` } });
+        if (!rolls) throw new Error(`${denomination} could not be spent.`);
+        diceSpent += 1;
+      }
+    }
+  }
+  const restConfig = { dialog: false, chat: false, autoHD: false, advanceTime: false, advanceBastionTurn: false, newDay: restType === "long" };
+  const restResult = restType === "short" ? await actor.shortRest(restConfig) : await actor.longRest(restConfig);
+  if (!restResult) throw new Error("The D&D rest did not complete.");
+  for (const item of [food, water].filter(Boolean)) await item.update({ "system.quantity": Math.max(0, Number(item.system?.quantity || 0) - 1) }, { pocketChronicle: true });
+  let tempHp = Number(actor.system?.attributes?.hp?.temp || 0);
+  if (restType === "long" && hearty && tempHp < 25) {
+    tempHp = 25;
+    await actor.update({ "system.attributes.hp.temp": 25 }, { pocketChronicle: true });
+  }
+  const exhaustionAdded = (foodKey === "spoiled-provisions" ? 2 : 0) + (waterKey === "tainted-water" ? 1 : 0);
+  const exhaustion = Math.max(0, Math.min(6, Number(actor.system?.attributes?.exhaustion || 0) + exhaustionAdded));
+  if (exhaustionAdded) await actor.update({ "system.attributes.exhaustion": exhaustion }, { pocketChronicle: true });
+  return { restType, food: food?.name || "Exempt", water: water?.name || "Exempt", diceSpent, heartyBonus, tempHp, exhaustionAdded, exhaustion };
+}
+
 function configureSettingsUi(html) {
   if (!game.user?.isGM) return;
   const root = html instanceof HTMLElement ? html : html?.[0];
@@ -1307,6 +1597,42 @@ function configureSettingsUi(html) {
   }
   const anchor = codeInput?.closest(".form-group");
   if (!anchor) return;
+
+  const sessionGroup = document.createElement("div");
+  sessionGroup.className = "form-group pocket-chronicle-session-control";
+  const sessionLabel = document.createElement("label");
+  sessionLabel.textContent = "Pocket Chronicle world session";
+  const sessionFields = document.createElement("div");
+  sessionFields.className = "form-fields";
+  const sessionToggle = document.createElement("button");
+  sessionToggle.type = "button";
+  const sessionSync = document.createElement("button");
+  sessionSync.type = "button";
+  sessionSync.innerHTML = '<i class="fa-solid fa-rotate"></i> Sync Now';
+  const sessionHint = document.createElement("p");
+  sessionHint.className = "hint";
+  const refreshSessionControls = () => {
+    const active = Boolean(game.settings.get(MODULE_ID, "worldActive"));
+    sessionToggle.innerHTML = active
+      ? '<i class="fa-solid fa-moon"></i> End Session'
+      : '<i class="fa-solid fa-sun"></i> Start Active World';
+    sessionSync.disabled = !active;
+    sessionHint.textContent = active
+      ? "ACTIVE — Shop, rests, stress, equipment, and live character controls are open on player phones."
+      : "SLEEPING — Phones retain their records and local rolls, but live Foundry controls make no requests.";
+  };
+  sessionToggle.addEventListener("click", () => void (async () => {
+    sessionToggle.disabled = true;
+    if (game.settings.get(MODULE_ID, "worldActive")) await endActiveWorld();
+    else await startActiveWorld();
+    refreshSessionControls();
+    sessionToggle.disabled = false;
+  })());
+  sessionSync.addEventListener("click", () => void syncActiveWorld(true));
+  sessionFields.append(sessionToggle, sessionSync);
+  sessionGroup.append(sessionLabel, sessionFields, sessionHint);
+  refreshSessionControls();
+  anchor.insertAdjacentElement("afterend", sessionGroup);
 
   const group = document.createElement("div");
   group.className = "form-group pocket-chronicle-pairing-control";
@@ -1345,7 +1671,7 @@ function configureSettingsUi(html) {
   hint.className = "hint";
   hint.textContent = "Players use this code to connect. First-time phones and forgotten passwords appear here for your approval.";
   group.append(label, fields, hint);
-  anchor.insertAdjacentElement("afterend", group);
+  sessionGroup.insertAdjacentElement("afterend", group);
 
   const shopGroup = document.createElement("div");
   shopGroup.className = "form-group pocket-chronicle-shop-control";
@@ -1363,6 +1689,7 @@ function configureSettingsUi(html) {
   shopHint.textContent = "Choose which world Items are sold in the Pocket Chronicle phone shop.";
   shopGroup.append(shopLabel, shopFields, shopHint);
   group.insertAdjacentElement("afterend", shopGroup);
+
 }
 
 async function chooseAccessDecision(accessRequest) {

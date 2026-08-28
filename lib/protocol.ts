@@ -15,6 +15,7 @@ export type ChronicleActionKind =
   | "recordDeathSave"
   | "showDice"
   | "setInspiration"
+  | "setExhaustion"
   | "chat"
   | "purchase"
   | "takeRationsRest"
@@ -43,6 +44,7 @@ export interface ChronicleActor {
   speed: number;
   initiative?: number;
   inspiration?: boolean;
+  exhaustion?: number;
   deathSaves?: { successes: number; failures: number };
   abilities: Array<{ key: string; label: string; score: number; modifier: number }>;
   saves?: Array<{ key: string; label: string; modifier: number; proficient: boolean }>;
@@ -90,6 +92,9 @@ export interface ChronicleActor {
     description?: string;
     image?: string;
     uses?: string;
+    quantity?: number;
+    equipped?: boolean;
+    attuned?: boolean;
     spellLevel?: number;
     rolls?: Array<{
       key: string;
@@ -180,6 +185,24 @@ export interface ChronicleMessage {
   timestamp: number;
 }
 
+export interface ChronicleCombatant {
+  id: string;
+  name: string;
+  portrait?: string;
+  initiative?: number;
+  active: boolean;
+  defeated: boolean;
+  actorUuid?: string;
+}
+
+export interface ChronicleCombatState {
+  active: boolean;
+  round: number;
+  turn: number;
+  currentName?: string;
+  combatants: ChronicleCombatant[];
+}
+
 export interface ChronicleShopItem {
   uuid: string;
   name: string;
@@ -221,6 +244,7 @@ export interface ChronicleSnapshot {
   journals: ChronicleJournal[];
   messages: ChronicleMessage[];
   shop: ChronicleShopItem[];
+  combat?: ChronicleCombatState;
   extensions?: {
     restRations?: ChronicleRestRationsExtension;
     [key: string]: unknown;
@@ -253,6 +277,7 @@ export const allowedActionKinds = new Set<ChronicleActionKind>([
   "recordDeathSave",
   "showDice",
   "setInspiration",
+  "setExhaustion",
   "chat",
   "purchase",
   "takeRationsRest",

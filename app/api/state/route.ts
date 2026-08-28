@@ -1,13 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { playerAccountCharacters, playerAccounts, snapshots } from "@/db/schema";
-import { isBridgeOnline } from "@/lib/bridge-presence";
+import { isWorldActive } from "@/lib/bridge-presence";
 import { jsonError, requirePlayerSession } from "@/lib/server-auth";
 
 export async function GET(request: Request) {
   const session = await requirePlayerSession(request);
   if (!session) return jsonError("Pair this phone with a campaign to continue.", 401);
-  const bridgeOnline = isBridgeOnline(session.lastSeenAt);
+  const bridgeOnline = isWorldActive(session);
 
   const db = getDb();
   if (session.accountId) {
@@ -43,6 +43,7 @@ export async function GET(request: Request) {
       updatedAt: selected.updatedAt,
       account: { id: account.id, playerLabel: account.playerLabel },
       bridgeOnline,
+      worldState: bridgeOnline ? "active" : "sleeping",
       characters: parsed.map(({ snapshot }) => ({
         uuid: snapshot.actor.uuid,
         name: snapshot.actor.name,
@@ -63,5 +64,5 @@ export async function GET(request: Request) {
   if (!snapshot) return jsonError("Your character is paired, but Foundry has not sent its first update yet.", 404);
   const payload = JSON.parse(snapshot.payloadJson);
   payload.campaign.edition = session.edition;
-  return Response.json({ snapshot: payload, revision: snapshot.revision, updatedAt: snapshot.updatedAt, bridgeOnline });
+  return Response.json({ snapshot: payload, revision: snapshot.revision, updatedAt: snapshot.updatedAt, bridgeOnline, worldState: bridgeOnline ? "active" : "sleeping" });
 }

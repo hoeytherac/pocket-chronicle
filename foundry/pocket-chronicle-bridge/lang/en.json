@@ -10,5 +10,5 @@
   "POCKET.BridgeKey.Name": "Private bridge key",
   "POCKET.BridgeKey.Hint": "Keep this secret. Players never need this key.",
   "POCKET.PollMs.Name": "Action check interval",
-  "POCKET.PollMs.Hint": "How often an enabled GM browser checks for phone actions, in milliseconds. Five seconds is recommended."
+  "POCKET.PollMs.Hint": "How often an Active World checks for phone actions. Fifteen seconds is recommended; Sleeping worlds make no checks."
 }

@@ -17,29 +17,32 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 
 - portrait-first phone layout with a clear blue, restrained fantasy style
 - portrait and identity details for species, background, class, subclass, alignment, size, and languages
-- character HP, abilities, saving throws, skills, initiative, inspiration, death saves, and level-up requests
-- dedicated Spells tab grouped by cantrips and spell level, with jewel-like live slot meters and a selectable casting slot
-- dedicated Effects tab for the character's currently applied Foundry conditions, spell effects, and feature effects
+- character HP, temporary HP, abilities, saving throws, skills, initiative, inspiration, death saves, equipment, and linked resources
+- dedicated Spells tab grouped by cantrips and spell level, with jewel-like slot meters imported from Foundry and then tracked locally on the phone
+- dedicated Equipment tab for weapons, armor, consumables, tools, packs, treasures, quantities, and equipped or attuned state
 - separate Actions, Feats, and Items shelves with tap-to-read details and no character-sheet item limit
 - activity-aware local phone rolls for abilities, skills, saves, initiative, spell attacks, scaled damage, healing, and death saves, including Foundry keep/drop, reroll, explode, minimum, and maximum modifiers
 - attack activities roll the attack and every attached damage/healing formula together, using the selected casting level and D&D 5e cantrip scaling
 - instant blue-silver coin reveals, sparkling roll details, and 30-second tap-to-close result cards replace the unreliable mobile physics renderer
 - separate positive-number controls for damage and healing, plus direct Temporary HP editing
 - spell activities expose their attack, save DC, damage, healing, activation, duration, and concentration details while intentionally omitting target and range
-- chosen spell slots, activity uses, item uses, quantities, and linked native resources are spent on the authoritative Foundry character sheet without a Foundry-authored roll card
+- local spell slots stay responsive without a relay request; authoritative item activities, uses, quantities, and linked native resources are spent through Foundry only while the world is Active
 - active Midi-QOL, CPR, CAT, and DAE integrations are identified without launching their target/canvas workflows from a local phone roll
-- app-native dice are the primary roll display, with optional Dice So Nice mirroring in Foundry through its official no-chat API
+- app-native roll reveals are the primary roll display and do not launch a Foundry dice renderer
 - phone HP edits update temporary and current HP directly, so damage/healing signs stay correct without starting Midi-QOL concentration automation
-- GM-shared journal entries and images
-- table chat plus local d4/d6/d8/d10/d12/d20 rolls
-- GM-curated purchases that deduct the character's D&D5e currency and deliver stackable items to inventory
+- a personal, phone-local journal plus GM-shared Foundry journal entries and images
+- Pocket Chat with a party channel and private player-to-player conversations, available during Sleeping World and stored separately from Foundry chat
+- an Active/Sleeping World switch: sleeping campaigns stay readable without continuous background relay traffic, while live actions are available only during Active World
+- a Home combat tracker, six-step Stress track, and native Short Rest/Long Rest controls for Active World
+- rest provisions built into the bridge: every rest consumes one food and one water serving; Hearty Feast improves recovery, Spoiled Rations add two Exhaustion, and Contaminated Water adds one Exhaustion
+- GM-curated purchases that remain closed while Sleeping, then deduct D&D5e currency and deliver stackable items while Active
 - closed-by-default linked Resources at the bottom of the Sheet, so large automation lists stay out of the way
 - installable from Safari or Chrome using the phone's home-screen flow
 - no Scene canvas, map rendering, or Foundry desktop controls
-- locked connection screen whenever the paired Foundry module is offline
-- revision-aware background sync updates the visible sheet only when Foundry data actually changes, preserving the player's scroll position
+- a readable cached Sleeping World state when Foundry is not running a live session
+- revision-aware, low-frequency Active World sync updates the visible sheet only when Foundry data actually changes, preserving the player's scroll position
 
-There is no unconnected demo mode. A player can enter the app only while an authenticated Pocket Chronicle module is active in Foundry.
+There is no unconnected demo mode. A campaign must first be paired through an authenticated Pocket Chronicle module. Once paired and synced, players can read the cached Sleeping World; purchases, rests, authoritative resource changes, combat, and other live actions remain locked until the GM starts Active World.
 
 ## Local development
 
@@ -82,9 +85,9 @@ The direct Cloudflare settings live in `wrangler.cloudflare.jsonc`. Personal Fou
 
 For a forgotten password, the player taps **Forgot or reset this password** and re-enters the Campaign ID and Campaign code. The GM clicks **Check Requests / Resets** in the Pocket Chronicle Bridge settings and approves the named player. The phone then prompts for a new password, and older Pocket Chronicle sessions for that player are signed out.
 
-The bridge and every approval prompt use Foundry documents directly. They do not render or depend on the Scene canvas, so the canvas may remain disabled.
+The bridge and every approval prompt use Foundry documents directly. They do not render or depend on the Scene canvas, so the canvas may remain disabled. Use **Start Active World** at the beginning of play, **Sync Now** whenever you want to publish a fresh world snapshot, and **End Session** when play is finished.
 
-The GM can open **Game Settings → Configure Settings → Pocket Chronicle Bridge → Open Shop Manager** to choose which world Items are sold on phones. Paid content modules can register private snapshot data and phone actions through the bridge extension API without placing their source in this public repository.
+The GM can open **Game Settings → Configure Settings → Pocket Chronicle Bridge → Open Shop Manager** to choose which world Items are sold on phones. The bridge also creates the five permanent Rest & Rations shop items and makes them available without the separate DLC module. Paid content modules can still register private snapshot data and phone actions through the bridge extension API without placing their source in this public repository.
 
 To share content, use the bridge API from a GM macro:
 
@@ -93,7 +96,7 @@ await game.modules.get("pocket-chronicle-bridge").api.shareJournal("JournalEntry
 await game.modules.get("pocket-chronicle-bridge").api.shareShopItem("Item.YOUR_UUID");
 ```
 
-The module sends a heartbeat every ten seconds. The phone interface locks after thirty seconds without an authenticated heartbeat. Each DM can use the same module with their own Foundry HTTPS address and unique campaign credentials; the hosted app never logs into or pulls directly from their server.
+During Active World, the module renews a short server lease and processes live actions. During Sleeping World, the phone reads the last approved snapshot without continuous state polling. Each DM can use the same module with their own Foundry HTTPS address and unique campaign credentials; the hosted app never logs into or pulls directly from their server.
 
 ## Repository map
 

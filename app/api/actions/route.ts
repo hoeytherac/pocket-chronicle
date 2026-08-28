@@ -2,13 +2,13 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { actions, playerAccountCharacters } from "@/db/schema";
 import { allowedActionKinds, type ChronicleActionKind } from "@/lib/protocol";
-import { isBridgeOnline } from "@/lib/bridge-presence";
+import { isWorldActive } from "@/lib/bridge-presence";
 import { jsonError, requirePlayerSession } from "@/lib/server-auth";
 
 export async function POST(request: Request) {
   const session = await requirePlayerSession(request);
   if (!session) return jsonError("Your phone is not paired with this campaign.", 401);
-  if (!isBridgeOnline(session.lastSeenAt)) return jsonError("The Foundry module is offline.", 503);
+  if (!isWorldActive(session)) return jsonError("The Foundry world is sleeping. Ask your GM to start an Active World session.", 503);
 
   const body = await request.json().catch(() => null) as { actorUuid?: string; kind?: ChronicleActionKind; payload?: Record<string, unknown> } | null;
   if (!body?.kind || !allowedActionKinds.has(body.kind)) return jsonError("That action is not supported.", 400);
