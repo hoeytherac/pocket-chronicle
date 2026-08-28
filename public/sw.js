@@ -1,8 +1,8 @@
-const CACHE = "pocket-chronicle-v0142-1";
+const CACHE = "pocket-chronicle-v0144-2";
 const SHELL = [
   "/mobile.html",
-  "/mobile.css?v=19",
-  "/mobile.js?v=19",
+  "/mobile.css?v=20",
+  "/mobile.js?v=20",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/icon-180.png",

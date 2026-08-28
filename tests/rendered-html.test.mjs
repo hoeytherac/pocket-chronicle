@@ -81,11 +81,11 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=29"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0142/);
+  assert.match(serviceWorker, /pocket-chronicle-v0144/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=19/);
-  assert.match(mobile, /mobile\.css\?v=19/);
+  assert.match(mobile, /mobile\.js\?v=20/);
+  assert.match(mobile, /mobile\.css\?v=20/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);

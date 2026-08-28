@@ -302,7 +302,7 @@
     showGate("Connect your campaign", "Enter the Campaign ID and permanent six-character Campaign code your GM saved in Foundry.");
     var form = create("form", "field-stack");
     form.dataset.form = "campaign";
-    form.appendChild(labelledInput("Campaign ID", "campaign-id", "text", state.campaignId, "salt-and-sacrifice"));
+    form.appendChild(labelledInput("Campaign ID", "campaign-id", "text", state.campaignId, "exodusters"));
     var codeField = labelledInput("Campaign code", "campaign-code", "text", state.campaignCode, "ABC123");
     codeField.querySelector("input").className = "campaign-code";
     codeField.querySelector("input").maxLength = 6;
@@ -363,7 +363,7 @@
     showGate("Reset " + name + "’s password", "Re-enter the Campaign ID and six-character Campaign code. A reset request will be sent to your GM in Foundry.");
     var form = create("form", "field-stack");
     form.dataset.form = "password-reset-campaign";
-    form.appendChild(labelledInput("Campaign ID", "reset-campaign-id", "text", state.campaignId, "salt-and-sacrifice"));
+    form.appendChild(labelledInput("Campaign ID", "reset-campaign-id", "text", state.campaignId, "exodusters"));
     var codeField = labelledInput("Campaign code", "reset-campaign-code", "text", state.campaignCode, "ABC123");
     codeField.querySelector("input").className = "campaign-code";
     codeField.querySelector("input").maxLength = 6;
