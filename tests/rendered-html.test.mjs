@@ -52,7 +52,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0120.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0144.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0145.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/access-requests/route.ts", import.meta.url), "utf8"),
@@ -221,10 +221,14 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /api\/bridge\/access-requests/);
   assert.match(bridge, /Check Requests \/ Resets/);
   assert.match(bridge, /Approve Reset/);
-  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.14\.4/);
-  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.14\.4/);
-  assert.match(moduleManifest, /bridge-v0144\.js/);
-  assert.match(moduleManifest, /"version": "0\.14\.4"/);
+  assert.match(bridge, /game\.world\.nextSession/);
+  assert.match(bridge, /worldSessionSnapshot/);
+  assert.match(bridge, /dateLabel/);
+  assert.doesNotMatch(bridge, /subtitle: "Shared from Foundry"/);
+  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.14\.5/);
+  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.14\.5/);
+  assert.match(moduleManifest, /bridge-v0145\.js/);
+  assert.match(moduleManifest, /"version": "0\.14\.5"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /password-reset/);

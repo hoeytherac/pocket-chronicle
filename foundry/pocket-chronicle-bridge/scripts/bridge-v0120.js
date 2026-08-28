@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.14.4 */
+/* Pocket Chronicle Bridge v0.14.5 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -67,7 +67,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.4",
+    version: "0.14.5",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -430,6 +430,25 @@ function detailText(value, fallback = "") {
   if (typeof value === "string") return value || fallback;
   if (!value || typeof value !== "object") return fallback;
   return value.name || value.label || value.custom || value.value || fallback;
+}
+
+function worldSessionSnapshot() {
+  const title = game.world.title;
+  const source = game.world.nextSession;
+  if (!source) return { title, subtitle: "Schedule not set in Foundry" };
+
+  const normalized = typeof source === "string" ? source.trim().replace(" ", "T") : source;
+  const date = source instanceof Date ? source : new Date(normalized);
+  if (Number.isNaN(date.getTime())) return { title, subtitle: String(source) };
+
+  const dateText = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const timeText = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const month = date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+  return {
+    title,
+    subtitle: `${dateText} at ${timeText}`,
+    dateLabel: `${date.getDate()} ${month}`,
+  };
 }
 
 function finiteNumber(...values) {
@@ -1113,7 +1132,7 @@ async function buildSnapshot(actor) {
     }),
     combat: combatSnapshot(),
     extensions: await extensionSnapshotData(actor),
-    session: { title: game.world.title, subtitle: "Shared from Foundry" },
+    session: worldSessionSnapshot(),
     revision: 0,
     generatedAt: Date.now(),
   };
