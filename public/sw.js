@@ -1,7 +1,7 @@
-const CACHE = "pocket-chronicle-v0146-1";
+const CACHE = "pocket-chronicle-v0147-1";
 const SHELL = [
   "/mobile.html",
-  "/mobile.css?v=21",
+  "/mobile.css?v=22",
   "/mobile.js?v=21",
   "/exodusters-tables.json?v=1",
   "/manifest.webmanifest",
