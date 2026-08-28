@@ -2577,6 +2577,7 @@
       if (closed) return;
       closed = true;
       window.clearTimeout(rollCloseTimer);
+      overlay.classList.remove("rolling");
       overlay.classList.add("closing");
       window.setTimeout(function () { overlay.remove(); }, 180);
     }

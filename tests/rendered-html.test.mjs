@@ -83,12 +83,12 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=30"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0147/);
+  assert.match(serviceWorker, /pocket-chronicle-v0148/);
   assert.match(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=21/);
-  assert.match(mobile, /mobile\.css\?v=22/);
+  assert.match(mobile, /mobile\.js\?v=22/);
+  assert.match(mobile, /mobile\.css\?v=23/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -130,6 +130,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileStyle, /bottom-nav button::before/);
   assert.doesNotMatch(mobileStyle, /bottom-nav button:nth-child\(n \+ 5\)/);
   assert.match(mobileStyle, /roll-coin-reveal/);
+  assert.doesNotMatch(mobileStyle, /rotateY\(760deg\)/);
+  assert.match(mobileStyle, /roll-coin-shine/);
   assert.match(mobileStyle, /roll-sparkle/);
   assert.match(mobileStyle, /roll-hold 30s/);
   assert.match(mobileStyle, /\.sheet-action\s*\{[^}]*grid-template-columns:\s*38px minmax\(0, 1fr\)/s);
