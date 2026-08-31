@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { campaigns, tenants } from "@/db/schema";
-import { hasProductAccess } from "@/lib/entitlements";
-import type { Edition, SubscriptionStatus } from "@/lib/protocol";
+import { hasCampaignProductAccess } from "@/lib/entitlements";
+import type { Edition, ProductTier, SubscriptionStatus } from "@/lib/protocol";
 import { normalizeCampaignCode, verifyPassword } from "@/lib/security";
 
 export async function authenticateCampaignAccess(campaignId: string, code: string) {
@@ -19,6 +19,7 @@ export async function authenticateCampaignAccess(campaignId: string, code: strin
       pairingPasswordHash: campaigns.pairingPasswordHash,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
     })
     .from(campaigns)
     .innerJoin(tenants, eq(campaigns.tenantId, tenants.id))
@@ -26,7 +27,7 @@ export async function authenticateCampaignAccess(campaignId: string, code: strin
     .limit(1);
 
   if (!campaign || campaign.status !== "active" || !campaign.pairingPasswordHash) return null;
-  if (!hasProductAccess(campaign.edition as Edition, campaign.subscriptionStatus as SubscriptionStatus)) return null;
+  if (!hasCampaignProductAccess(campaign.id, campaign.edition as Edition, campaign.subscriptionStatus as SubscriptionStatus, campaign.productTier as ProductTier)) return null;
   if (!(await verifyPassword(normalizedCode, campaign.pairingPasswordHash))) return null;
   return campaign;
 }

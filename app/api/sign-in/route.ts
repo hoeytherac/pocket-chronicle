@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { campaigns, playerAccounts, tenants } from "@/db/schema";
-import { hasProductAccess } from "@/lib/entitlements";
+import { hasCampaignProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
-import type { Edition, SubscriptionStatus } from "@/lib/protocol";
+import type { Edition, ProductTier, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
 import { verifyPassword } from "@/lib/security";
 
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
       campaignStatus: campaigns.status,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
     })
     .from(playerAccounts)
     .innerJoin(campaigns, eq(playerAccounts.campaignId, campaigns.id))
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     .where(and(eq(playerAccounts.id, body.accountId), eq(playerAccounts.active, true)))
     .limit(1);
 
-  const entitled = account && hasProductAccess(account.edition as Edition, account.subscriptionStatus as SubscriptionStatus);
+  const entitled = account && hasCampaignProductAccess(account.campaignId, account.edition as Edition, account.subscriptionStatus as SubscriptionStatus, account.productTier as ProductTier);
   if (!account || !entitled || account.campaignStatus !== "active") {
     return jsonError("That Pocket Chronicle account could not be signed in.", 401);
   }

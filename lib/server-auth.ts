@@ -1,8 +1,8 @@
 import { and, eq, gt } from "drizzle-orm";
 import { campaigns, playerSessions, tenants } from "@/db/schema";
 import { getDb } from "@/db";
-import { hasProductAccess } from "./entitlements";
-import type { Edition, SubscriptionStatus } from "./protocol";
+import { hasCampaignProductAccess } from "./entitlements";
+import type { Edition, ProductTier, SubscriptionStatus } from "./protocol";
 import { bearerToken, readCookie, sha256 } from "./security";
 
 export async function requireBridge(request: Request) {
@@ -24,6 +24,8 @@ export async function requireBridge(request: Request) {
       tenantId: tenants.id,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
+      playerLimit: tenants.playerLimit,
     })
     .from(campaigns)
     .innerJoin(tenants, eq(campaigns.tenantId, tenants.id))
@@ -31,7 +33,7 @@ export async function requireBridge(request: Request) {
     .limit(1);
 
   if (!result || result.bridgeKeyHash !== tokenHash || result.campaignStatus !== "active") return null;
-  if (!hasProductAccess(result.edition as Edition, result.subscriptionStatus as SubscriptionStatus)) return null;
+  if (!hasCampaignProductAccess(result.campaignId, result.edition as Edition, result.subscriptionStatus as SubscriptionStatus, result.productTier as ProductTier)) return null;
   return result;
 }
 
@@ -53,6 +55,7 @@ export async function requirePlayerSession(request: Request) {
       tenantId: tenants.id,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
     })
     .from(playerSessions)
     .innerJoin(campaigns, eq(playerSessions.campaignId, campaigns.id))
@@ -61,7 +64,7 @@ export async function requirePlayerSession(request: Request) {
     .limit(1);
 
   if (!result) return null;
-  if (!hasProductAccess(result.edition as Edition, result.subscriptionStatus as SubscriptionStatus)) return null;
+  if (!hasCampaignProductAccess(result.campaignId, result.edition as Edition, result.subscriptionStatus as SubscriptionStatus, result.productTier as ProductTier)) return null;
   return result;
 }
 

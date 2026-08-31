@@ -2,9 +2,9 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/db";
 import { campaigns, phoneAccessRequests, playerAccounts, playerSessions, tenants } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
-import { hasProductAccess } from "@/lib/entitlements";
+import { hasCampaignProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
-import type { Edition, SubscriptionStatus } from "@/lib/protocol";
+import type { Edition, ProductTier, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
 import { hashPassword, sha256 } from "@/lib/security";
 
@@ -28,6 +28,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       lastSeenAt: campaigns.lastSeenAt,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
     })
     .from(phoneAccessRequests)
     .innerJoin(playerAccounts, eq(phoneAccessRequests.accountId, playerAccounts.id))
@@ -41,7 +42,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ))
     .limit(1);
 
-  const entitled = accessRequest && hasProductAccess(accessRequest.edition as Edition, accessRequest.subscriptionStatus as SubscriptionStatus);
+  const entitled = accessRequest && hasCampaignProductAccess(accessRequest.campaignId, accessRequest.edition as Edition, accessRequest.subscriptionStatus as SubscriptionStatus, accessRequest.productTier as ProductTier);
   if (!accessRequest || !entitled || !accessRequest.accountActive || accessRequest.campaignStatus !== "active") {
     return jsonError("That approved phone request is no longer available.", 403);
   }
