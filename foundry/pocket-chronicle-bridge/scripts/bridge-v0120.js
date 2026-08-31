@@ -1,4 +1,4 @@
-/* Pocket Chronicle Bridge v0.14.5 */
+/* Pocket Chronicle Bridge v0.15.0 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
@@ -14,15 +14,22 @@ const BUILT_IN_PROVISIONS = [
   { key: "tainted-water", name: "Tainted Water", kind: "water", tier: "contaminated", price: { value: 1, denomination: "cp" }, image: "icons/consumables/potions/bottle-bulb-corked-green.webp", effect: "After the rest, gain 1 level of exhaustion." },
 ];
 const REQUEST_TIMEOUT_MS = 10000;
+const PULSE_IDLE_MS = 30000;
+const PULSE_BUSY_MS = 10000;
+const PULSE_BURST_WINDOW_MS = 120000;
 let bridgeOnline = false;
 let bridgeLastError = "";
 let bridgeStarted = false;
-let bridgeTimers = [];
+let bridgePulseTimer = 0;
+let bridgeBurstUntil = 0;
+let bridgeSeatWarningShown = false;
 let bridgeLifecycleListenersBound = false;
 let activePhoneUserId = "";
 let activePhoneActorId = "";
 const displayedAccessRequests = new Set();
 const bridgeExtensions = new Map();
+const dirtyActorIds = new Set();
+let fullSnapshotRequested = false;
 
 function integratedRestRationsFlags(document) {
   const flags = document?.flags || document?._source?.flags || {};
@@ -54,7 +61,7 @@ Hooks.once("init", () => {
     name: "POCKET.BridgeKey.Name", hint: "POCKET.BridgeKey.Hint", scope: "world", config: true, type: String, default: "",
   });
   game.settings.register(MODULE_ID, "pollMs", {
-    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: true, type: Number, default: 15000, range: { min: 10000, max: 60000, step: 5000 },
+    name: "POCKET.PollMs.Name", hint: "POCKET.PollMs.Hint", scope: "world", config: false, type: Number, default: 30000,
   });
   game.settings.register(MODULE_ID, "worldActive", {
     scope: "world", config: false, type: Boolean, default: false,
@@ -67,7 +74,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.14.5",
+    version: "0.15.0",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -125,8 +132,12 @@ Hooks.once("ready", async () => {
   if (game.settings.get(MODULE_ID, "worldActive")) startBridge();
 });
 
-Hooks.on("updateActor", () => scheduleSnapshot());
-Hooks.on("updateItem", () => scheduleSnapshot());
+Hooks.on("createActor", (actor) => scheduleSnapshot(actor));
+Hooks.on("updateActor", (actor) => scheduleSnapshot(actor));
+Hooks.on("deleteActor", (actor) => scheduleSnapshot(actor));
+Hooks.on("createItem", (item) => scheduleSnapshot(item));
+Hooks.on("updateItem", (item) => scheduleSnapshot(item));
+Hooks.on("deleteItem", (item) => scheduleSnapshot(item));
 Hooks.on("updateJournalEntry", () => scheduleSnapshot());
 Hooks.on("updateJournalEntryPage", () => scheduleSnapshot());
 Hooks.on("updateUser", () => scheduleSnapshot());
@@ -207,16 +218,19 @@ function startBridge() {
     return;
   }
   bridgeStarted = true;
-  const current = config();
-  void setRemoteWorldState(true).then(() => sendHeartbeat(true)).then(async (connected) => {
-    if (!connected) return;
-    await syncCampaignCode(true);
-    await pushAllSnapshots();
-    await pollAccessRequests();
+  void setRemoteWorldState(true).then(async () => {
+    const pulse = await runBridgePulse(true);
+    if (pulse.connected) {
+      await syncCampaignCode(true);
+      await pushAllSnapshots();
+    }
+    scheduleBridgePulse();
+  }).catch((error) => {
+    bridgeOnline = false;
+    bridgeLastError = error.message || String(error);
+    ui.notifications.error(`Pocket Chronicle is offline: ${bridgeLastError}`);
+    scheduleBridgePulse();
   });
-  bridgeTimers.push(window.setInterval(() => void sendHeartbeat(), 60000));
-  bridgeTimers.push(window.setInterval(() => void pollActions(), current.pollMs));
-  bridgeTimers.push(window.setInterval(() => void pollAccessRequests(), current.pollMs));
   if (!bridgeLifecycleListenersBound) {
     bridgeLifecycleListenersBound = true;
     window.addEventListener("focus", wakeBridge);
@@ -229,9 +243,24 @@ function startBridge() {
 }
 
 function clearBridgeTimers() {
-  for (const timer of bridgeTimers) window.clearInterval(timer);
-  bridgeTimers = [];
+  window.clearTimeout(bridgePulseTimer);
+  bridgePulseTimer = 0;
+  bridgeBurstUntil = 0;
+  bridgeSeatWarningShown = false;
   bridgeStarted = false;
+}
+
+function scheduleBridgePulse(delay) {
+  if (!bridgeStarted || !shouldRun()) return;
+  window.clearTimeout(bridgePulseTimer);
+  const nextDelay = Number.isFinite(delay)
+    ? Math.max(1000, delay)
+    : Date.now() < bridgeBurstUntil ? PULSE_BUSY_MS : PULSE_IDLE_MS;
+  bridgePulseTimer = window.setTimeout(async () => {
+    const pulse = await runBridgePulse();
+    if (pulse.activity) bridgeBurstUntil = Date.now() + PULSE_BURST_WINDOW_MS;
+    scheduleBridgePulse();
+  }, nextDelay);
 }
 
 async function setRemoteWorldState(active) {
@@ -258,8 +287,9 @@ async function syncActiveWorld(announce = true) {
     if (announce) ui.notifications.warn("Start the Pocket Chronicle Active World before syncing.");
     return false;
   }
-  if (!bridgeOnline && !(await sendHeartbeat())) return false;
-  await Promise.allSettled([pushAllSnapshots(), pollActions(), pollAccessRequests()]);
+  const pulse = await runBridgePulse();
+  if (!pulse.connected) return false;
+  await pushAllSnapshots();
   if (announce) ui.notifications.info("Pocket Chronicle Active World synchronized.");
   return true;
 }
@@ -278,31 +308,37 @@ async function endActiveWorld() {
 
 async function wakeBridge() {
   if (!shouldRun()) return;
-  const connected = await sendHeartbeat();
-  if (!connected) return;
-  await Promise.allSettled([pollActions(), pollAccessRequests()]);
+  const pulse = await runBridgePulse();
+  if (pulse.activity) bridgeBurstUntil = Date.now() + PULSE_BURST_WINDOW_MS;
+  scheduleBridgePulse();
 }
 
-async function sendHeartbeat(announce = false) {
-  if (!shouldRun() || sendHeartbeat.pending) return false;
-  sendHeartbeat.pending = true;
+async function runBridgePulse(announce = false) {
+  if (!shouldRun() || runBridgePulse.pending) return { connected: bridgeOnline, activity: false };
+  runBridgePulse.pending = true;
   try {
-    await bridgeFetch("/api/bridge/heartbeat", {
+    const result = await bridgeFetch("/api/bridge/pulse", {
       method: "POST",
       body: "{}",
     });
     bridgeOnline = true;
     bridgeLastError = "";
+    const queuedActions = result.actions || [];
+    const pendingRequests = result.requests || [];
+    for (const action of queuedActions) await executeAction(action);
+    void handleAccessRequests(pendingRequests).catch((error) => {
+      console.debug(`${MODULE_ID} | Phone request review paused`, error);
+    });
     if (announce) ui.notifications.info(`Pocket Chronicle connected to ${game.world.title}.`);
-    return true;
+    return { connected: true, activity: queuedActions.length > 0 || pendingRequests.length > 0 };
   } catch (error) {
     bridgeOnline = false;
     bridgeLastError = error.message || String(error);
     if (announce) ui.notifications.error(`Pocket Chronicle is offline: ${bridgeLastError}`);
-    console.debug(`${MODULE_ID} | Heartbeat paused`, error);
-    return false;
+    console.debug(`${MODULE_ID} | Bridge pulse paused`, error);
+    return { connected: false, activity: false };
   } finally {
-    sendHeartbeat.pending = false;
+    runBridgePulse.pending = false;
   }
 }
 
@@ -365,26 +401,57 @@ function scheduleCampaignCodeSync() {
   }, 500);
 }
 
-function scheduleSnapshot() {
+function snapshotActor(document) {
+  if (document?.documentName === "Actor") return document;
+  if (document?.parent?.documentName === "Actor") return document.parent;
+  return null;
+}
+
+function scheduleSnapshot(document) {
   if (!shouldRun()) return;
+  const actor = snapshotActor(document);
+  if (actor?.type === "character") dirtyActorIds.add(actor.id);
+  else fullSnapshotRequested = true;
   window.clearTimeout(scheduleSnapshot.pending);
-  scheduleSnapshot.pending = window.setTimeout(pushAllSnapshots, 900);
+  scheduleSnapshot.pending = window.setTimeout(flushScheduledSnapshots, 900);
+}
+
+async function flushScheduledSnapshots() {
+  const shouldPushAll = fullSnapshotRequested;
+  const actorIds = [...dirtyActorIds];
+  fullSnapshotRequested = false;
+  dirtyActorIds.clear();
+  if (shouldPushAll) return pushAllSnapshots();
+  return pushSnapshots(actorIds.map((id) => game.actors.get(id)).filter((actor) => actor?.type === "character"));
 }
 
 async function pushAllSnapshots() {
-  if (!shouldRun() || !bridgeOnline || pushAllSnapshots.pending) return;
-  pushAllSnapshots.pending = true;
+  return pushSnapshots(game.actors.filter((actor) => actor.type === "character"));
+}
+
+async function pushSnapshots(actors) {
+  if (!shouldRun() || !bridgeOnline || actors.length === 0) return;
+  if (pushSnapshots.pending) {
+    for (const actor of actors) dirtyActorIds.add(actor.id);
+    window.clearTimeout(scheduleSnapshot.pending);
+    scheduleSnapshot.pending = window.setTimeout(flushScheduledSnapshots, 1200);
+    return;
+  }
+  pushSnapshots.pending = true;
   try {
-    const actors = game.actors.filter((actor) => actor.type === "character");
     for (const actor of actors) {
       try {
-        await bridgeFetch("/api/bridge/snapshot", { method: "POST", body: JSON.stringify(await buildSnapshot(actor)) });
+        const result = await bridgeFetch("/api/bridge/snapshot", { method: "POST", body: JSON.stringify(await buildSnapshot(actor)) });
+        if (result.warning && !bridgeSeatWarningShown) {
+          bridgeSeatWarningShown = true;
+          ui.notifications.warn(result.warning);
+        }
       } catch (error) {
         console.warn(`${MODULE_ID} | Snapshot failed for ${actor.name}`, error);
       }
     }
   } finally {
-    pushAllSnapshots.pending = false;
+    pushSnapshots.pending = false;
   }
 }
 
@@ -1138,19 +1205,6 @@ async function buildSnapshot(actor) {
   };
 }
 
-async function pollActions() {
-  if (!shouldRun() || !bridgeOnline || pollActions.pending) return;
-  pollActions.pending = true;
-  try {
-    const result = await bridgeFetch("/api/bridge/actions");
-    for (const action of result.actions || []) await executeAction(action);
-  } catch (error) {
-    console.debug(`${MODULE_ID} | Action poll paused`, error);
-  } finally {
-    pollActions.pending = false;
-  }
-}
-
 async function executeAction(action) {
   let actingUser = null;
   try {
@@ -1789,29 +1843,33 @@ async function pollAccessRequests(announceEmpty = false) {
   pollAccessRequests.pending = true;
   try {
     const result = await bridgeFetch("/api/bridge/access-requests");
-    const requests = (result.requests || []).filter((entry) => !displayedAccessRequests.has(entry.id));
-    if (announceEmpty && requests.length === 0) ui.notifications.info("No phone connections or password resets are waiting for approval.");
-    for (const accessRequest of requests) {
-      displayedAccessRequests.add(accessRequest.id);
-      const decision = await chooseAccessDecision(accessRequest);
-      if (decision === "approve" || decision === "deny") {
-        await bridgeFetch(`/api/bridge/access-requests/${encodeURIComponent(accessRequest.id)}`, {
-          method: "POST",
-          body: JSON.stringify({ decision }),
-        });
-        ui.notifications.info(decision === "approve"
-          ? accessRequest.kind === "password-reset"
-            ? `${accessRequest.playerLabel}'s password reset was approved.`
-            : `${accessRequest.playerLabel}'s phone was approved.`
-          : `${accessRequest.playerLabel}'s phone request was denied.`);
-      } else {
-        displayedAccessRequests.delete(accessRequest.id);
-      }
-    }
+    await handleAccessRequests(result.requests || [], announceEmpty);
   } catch (error) {
     if (announceEmpty) ui.notifications.error(error.message || "Pocket Chronicle could not check phone requests.");
   } finally {
     pollAccessRequests.pending = false;
+  }
+}
+
+async function handleAccessRequests(pendingRequests, announceEmpty = false) {
+  const requests = pendingRequests.filter((entry) => !displayedAccessRequests.has(entry.id));
+  if (announceEmpty && requests.length === 0) ui.notifications.info("No phone connections or password resets are waiting for approval.");
+  for (const accessRequest of requests) {
+    displayedAccessRequests.add(accessRequest.id);
+    const decision = await chooseAccessDecision(accessRequest);
+    if (decision === "approve" || decision === "deny") {
+      await bridgeFetch(`/api/bridge/access-requests/${encodeURIComponent(accessRequest.id)}`, {
+        method: "POST",
+        body: JSON.stringify({ decision }),
+      });
+      ui.notifications.info(decision === "approve"
+        ? accessRequest.kind === "password-reset"
+          ? `${accessRequest.playerLabel}'s password reset was approved.`
+          : `${accessRequest.playerLabel}'s phone was approved.`
+        : `${accessRequest.playerLabel}'s phone request was denied.`);
+    } else {
+      displayedAccessRequests.delete(accessRequest.id);
+    }
   }
 }
 

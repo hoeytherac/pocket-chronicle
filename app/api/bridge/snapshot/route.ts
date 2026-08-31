@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { playerAccountCharacters, playerAccounts, snapshots } from "@/db/schema";
+import { isOwnerCampaign } from "@/lib/entitlements";
 import type { ChronicleSnapshot } from "@/lib/protocol";
 import { jsonError, requireBridge } from "@/lib/server-auth";
 
@@ -51,6 +52,14 @@ export async function POST(request: Request) {
     .filter((owner) => owner?.userId && owner.name)
     .slice(0, 50)
     .map((owner) => [owner.userId.slice(0, 100), { userId: owner.userId.slice(0, 100), name: owner.name.slice(0, 80) }])).values());
+  const enforceSeatLimit = bridge.edition === "commercial" && !isOwnerCampaign(bridge.campaignId);
+  const seatLimit = Math.max(1, Number(bridge.playerLimit || 8));
+  const [{ seatUsage: initialSeatUsage }] = await db
+    .select({ seatUsage: sql<number>`count(*)` })
+    .from(playerAccounts)
+    .where(and(eq(playerAccounts.campaignId, bridge.campaignId), eq(playerAccounts.active, true)));
+  let seatUsage = Number(initialSeatUsage || 0);
+  const skippedOwners = [];
   await db.delete(playerAccountCharacters).where(and(
     eq(playerAccountCharacters.campaignId, bridge.campaignId),
     eq(playerAccountCharacters.actorUuid, snapshot.actor.uuid),
@@ -68,6 +77,10 @@ export async function POST(request: Request) {
     if (existingAccount) {
       await db.update(playerAccounts).set({ playerLabel: owner.name, active: true, updatedAt: now }).where(eq(playerAccounts.id, accountId));
     } else {
+      if (enforceSeatLimit && seatUsage >= seatLimit) {
+        skippedOwners.push({ userId: owner.userId, name: owner.name });
+        continue;
+      }
       await db.insert(playerAccounts).values({
         id: accountId,
         campaignId: bridge.campaignId,
@@ -77,6 +90,7 @@ export async function POST(request: Request) {
         createdAt: now,
         updatedAt: now,
       });
+      seatUsage += 1;
     }
     await db.insert(playerAccountCharacters).values({
       id: crypto.randomUUID(),
@@ -89,5 +103,13 @@ export async function POST(request: Request) {
 
   // Lets D1 update query-planning statistics without a separate maintenance job.
   await db.run(sql`PRAGMA optimize`);
-  return Response.json({ ok: true, revision });
+  return Response.json({
+    ok: true,
+    revision,
+    seats: { used: seatUsage, limit: enforceSeatLimit ? seatLimit : null },
+    skippedOwners,
+    warning: skippedOwners.length > 0
+      ? `Pocket Chronicle is full. ${skippedOwners.length} new player account${skippedOwners.length === 1 ? " was" : "s were"} not imported.`
+      : undefined,
+  });
 }

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { campaigns, tenants } from "@/db/schema";
-import type { Edition } from "@/lib/protocol";
+import type { Edition, ProductTier } from "@/lib/protocol";
 import { bearerToken, randomToken, sha256 } from "@/lib/security";
 import { jsonError } from "@/lib/server-auth";
 
@@ -18,12 +18,20 @@ export async function POST(request: Request) {
     campaignName?: string;
     campaignId?: string;
     edition?: Edition;
+    productTier?: ProductTier;
+    campaignLimit?: number;
+    playerLimit?: number;
   } | null;
   if (!body?.tenantName || !body.tenantSlug || !body.campaignName || !body.campaignId) {
     return jsonError("Tenant name, slug, campaign name, and campaign ID are required.", 400);
   }
 
   const edition = body.edition === "commercial" ? "commercial" : "personal";
+  const productTier = edition === "personal"
+    ? "owner"
+    : body.productTier === "supporter" ? "supporter" : "keeper";
+  const campaignLimit = Math.max(1, Math.min(5, Math.floor(Number(body.campaignLimit) || 1)));
+  const playerLimit = Math.max(1, Math.min(20, Math.floor(Number(body.playerLimit) || 8)));
   const tenantId = crypto.randomUUID();
   const bridgeKey = randomToken(32);
   const now = Date.now();
@@ -36,6 +44,9 @@ export async function POST(request: Request) {
       name: body.tenantName.slice(0, 100),
       edition,
       subscriptionStatus: edition === "personal" ? "personal" : "trialing",
+      productTier,
+      campaignLimit,
+      playerLimit,
       createdAt: now,
     });
     await db.insert(campaigns).values({
@@ -56,6 +67,9 @@ export async function POST(request: Request) {
     campaignId: body.campaignId,
     bridgeKey,
     edition,
+    productTier,
+    campaignLimit,
+    playerLimit,
     warning: "Save the bridge key now. It is never returned again.",
   }, { status: 201 });
 }

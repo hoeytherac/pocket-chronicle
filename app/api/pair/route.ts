@@ -2,9 +2,9 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accountPairingCodes, campaigns, pairingCodes, playerAccounts, playerSessions, tenants } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
-import { hasProductAccess } from "@/lib/entitlements";
+import { hasCampaignProductAccess } from "@/lib/entitlements";
 import { createPlayerAccountSession } from "@/lib/player-account";
-import type { Edition, SubscriptionStatus } from "@/lib/protocol";
+import type { Edition, ProductTier, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
 import { hashPassword, randomToken, sessionCookie, sha256, verifyPassword } from "@/lib/security";
 
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       lastSeenAt: campaigns.lastSeenAt,
       edition: tenants.edition,
       subscriptionStatus: tenants.subscriptionStatus,
+      productTier: tenants.productTier,
     })
     .from(accountPairingCodes)
     .innerJoin(playerAccounts, eq(accountPairingCodes.accountId, playerAccounts.id))
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     .limit(1);
 
   if (accountPairing) {
-    const entitled = hasProductAccess(accountPairing.edition as Edition, accountPairing.subscriptionStatus as SubscriptionStatus);
+    const entitled = hasCampaignProductAccess(accountPairing.campaignId, accountPairing.edition as Edition, accountPairing.subscriptionStatus as SubscriptionStatus, accountPairing.productTier as ProductTier);
     if (!accountPairing.accountActive || !entitled || accountPairing.campaignStatus !== "active") {
       return jsonError("That Pocket Chronicle account is not currently available.", 403);
     }

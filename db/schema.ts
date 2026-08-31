@@ -8,6 +8,11 @@ export const tenants = sqliteTable("tenants", {
   subscriptionStatus: text("subscription_status", {
     enum: ["personal", "trialing", "active", "past_due", "canceled"],
   }).notNull().default("personal"),
+  productTier: text("product_tier", {
+    enum: ["owner", "supporter", "keeper"],
+  }).notNull().default("owner"),
+  campaignLimit: integer("campaign_limit").notNull().default(1),
+  playerLimit: integer("player_limit").notNull().default(8),
   createdAt: integer("created_at").notNull(),
 }, (table) => [uniqueIndex("tenants_slug_unique").on(table.slug)]);
 

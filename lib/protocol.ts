@@ -1,5 +1,6 @@
 export type Edition = "personal" | "commercial";
 export type SubscriptionStatus = "personal" | "trialing" | "active" | "past_due" | "canceled";
+export type ProductTier = "owner" | "supporter" | "keeper";
 
 export type ChronicleActionKind =
   | "adjustHp"
