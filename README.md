@@ -31,7 +31,7 @@ The current build includes the phone UI, installable PWA shell, permanent campai
 - app-native roll reveals are the primary roll display and do not launch a Foundry dice renderer
 - phone HP edits update temporary and current HP directly, so damage/healing signs stay correct without starting Midi-QOL concentration automation
 - a personal, phone-local journal plus GM-shared Foundry journal entries and images
-- Pocket Chat with a party channel and private player-to-player conversations, available during Sleeping World and stored separately from Foundry chat
+- always-available Pocket Chat with a party channel and private player-to-player conversations, stored separately from Foundry chat and gently refreshed while the Chat tab is open during either Active or Sleeping World
 - an Active/Sleeping World switch: sleeping campaigns stay readable without continuous background relay traffic, while live actions are available only during Active World
 - a Home combat tracker, six-step Stress track, and native Short Rest/Long Rest controls for Active World
 - rest provisions built into the bridge: every rest consumes one food and one water serving; Hearty Feast improves recovery, Spoiled Rations add two Exhaustion, and Contaminated Water adds one Exhaustion

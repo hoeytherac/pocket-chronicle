@@ -793,6 +793,16 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .shop-closed-card p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 
 .chat-channels, .journal-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.chat-service-card { margin: 0 0 14px; padding: 13px; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 11px; align-items: center; border: 1px solid #3c536a; border-radius: 17px; background: linear-gradient(145deg, #172434, #111923); }
+.chat-service-card.online { border-color: #4c776d; background: radial-gradient(circle at 0 0, rgba(108, 190, 164, .14), transparent 46%), linear-gradient(145deg, #17282b, #111923); }
+.chat-service-card.unavailable { border-color: #775859; background: radial-gradient(circle at 0 0, rgba(190, 104, 108, .12), transparent 46%), linear-gradient(145deg, #281d24, #111923); }
+.chat-service-sigil { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid #5d7894; border-radius: 50%; color: #b9d8ef; background: #152131; font-family: Georgia, "Times New Roman", serif; font-size: 18px; box-shadow: 0 0 18px rgba(124, 175, 216, .13); }
+.chat-service-card.online .chat-service-sigil { border-color: #619184; color: #8ed8bf; box-shadow: 0 0 18px rgba(102, 207, 172, .15); }
+.chat-service-card.unavailable .chat-service-sigil { border-color: #91666a; color: #e0a2a5; }
+.chat-service-card strong, .chat-service-card span { display: block; }
+.chat-service-card strong { margin-top: 2px; color: #dce8f2; font-size: 12px; }
+.chat-service-card div > span { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.chat-service-action { min-height: 34px; padding: 0 10px; border: 1px solid #506b85; border-radius: 11px; color: #b7d4eb; background: #182636; font-size: 9px; font-weight: 800; }
 .chat-channels button, .journal-modes button { min-width: 0; min-height: 74px; padding: 10px; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: center; border: 1px solid #344255; border-radius: 16px; background: #141b25; color: #9eabba; text-align: left; }
 .chat-channels button.active, .journal-modes button.active { border-color: #668aaa; background: linear-gradient(145deg, #1d3043, #172230); color: #d9e7f2; box-shadow: inset 0 2px rgba(148, 198, 235, .38); }
 .chat-channel-sigil, .journal-mode-sigil { color: #a9cae4; font-family: Georgia, "Times New Roman", serif; font-size: 22px; text-align: center; }
@@ -852,6 +862,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .bottom-nav { gap: 1px; padding-inline: 2px; }
   .bottom-nav button small { font-size: 7px; }
   .world-state-card { grid-template-columns: 42px minmax(0, 1fr); }
+  .chat-service-card { grid-template-columns: 34px minmax(0, 1fr); }
+  .chat-service-action { grid-column: 1 / -1; width: 100%; }
   .world-sync-button { grid-column: 1 / -1; }
   .exodusters-table-actions { grid-template-columns: 1fr; }
 }

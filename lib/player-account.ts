@@ -3,7 +3,11 @@ import { getDb } from "@/db";
 import { playerAccountCharacters, playerSessions } from "@/db/schema";
 import { randomToken, sessionCookie, sha256 } from "@/lib/security";
 
-export const PLAYER_SESSION_SECONDS = 60 * 60 * 24 * 30;
+// A paired phone is a personal companion device. Keep it signed in for six
+// months so Sleeping World features such as Pocket Chat do not unexpectedly
+// disappear between campaigns; the player password can still replace it at
+// any time and a GM-approved reset revokes every existing session.
+export const PLAYER_SESSION_SECONDS = 60 * 60 * 24 * 180;
 
 export async function createPlayerAccountSession(accountId: string, campaignId: string) {
   const db = getDb();

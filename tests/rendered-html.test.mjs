@@ -40,7 +40,7 @@ test("server-renders Pocket Chronicle", async () => {
 });
 
 test("ships the installable app and secure bridge boundaries", async () => {
-  const [page, mobile, mobileScript, mobileStyle, gettingStarted, exodustersTablesRaw, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, releaseLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
+  const [page, mobile, mobileScript, mobileStyle, gettingStarted, exodustersTablesRaw, recovery, layout, manifest, serviceWorker, schema, bridge, compatibilityLoader, releaseLoader, moduleManifest, heartbeat, bridgeAccessRequests, campaignAccessRequests, completeAccessRequest, messagesRoute, security, accountMigration, accessMigration, packageJson, worker] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.html", import.meta.url), "utf8"),
     readFile(new URL("../public/mobile.js", import.meta.url), "utf8"),
@@ -54,12 +54,13 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0120.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0151.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0152.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/access-requests/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/campaign/access-requests/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/campaign/access-requests/[id]/complete/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/messages/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/security.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_thankful_white_tiger.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0003_flowery_matthew_murdock.sql", import.meta.url), "utf8"),
@@ -84,13 +85,13 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=30"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0151/);
+  assert.match(serviceWorker, /pocket-chronicle-v0152/);
   assert.match(serviceWorker, /getting-started\.html/);
   assert.doesNotMatch(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=25/);
-  assert.match(mobile, /mobile\.css\?v=25/);
+  assert.match(mobile, /mobile\.js\?v=26/);
+  assert.match(mobile, /mobile\.css\?v=26/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -150,6 +151,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /loadPocketMessages/);
   assert.match(mobileScript, /Direct messages/);
   assert.match(mobileScript, /chat-player-picker/);
+  assert.match(mobileScript, /Always-on service/);
+  assert.match(mobileScript, /Available during both Active World and Sleeping World/);
+  assert.match(mobileScript, /state\.tab === "chat"[\s\S]*loadPocketMessages\(true\)/);
+  assert.doesNotMatch(messagesRoute, /isWorldActive|worldState|activeUntil/);
   assert.doesNotMatch(mobileScript, /Message your DM privately/);
   assert.match(mobileScript, /local-journal/);
   assert.match(mobileScript, /combatTracker/);
@@ -259,10 +264,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /worldSessionSnapshot/);
   assert.match(bridge, /dateLabel/);
   assert.doesNotMatch(bridge, /subtitle: "Shared from Foundry"/);
-  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.15\.1/);
-  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.15\.1/);
-  assert.match(moduleManifest, /bridge-v0151\.js/);
-  assert.match(moduleManifest, /"version": "0\.15\.1"/);
+  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.15\.2/);
+  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.15\.2/);
+  assert.match(moduleManifest, /bridge-v0152\.js/);
+  assert.match(moduleManifest, /"version": "0\.15\.2"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /readPendingAccessRequests/);
