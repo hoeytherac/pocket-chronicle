@@ -1,8 +1,8 @@
-const CACHE = "pocket-chronicle-v0150-1";
+const CACHE = "pocket-chronicle-v0150-2";
 const SHELL = [
   "/mobile.html",
   "/mobile.css?v=24",
-  "/mobile.js?v=23",
+  "/mobile.js?v=24",
   "/getting-started.html",
   "/exodusters-tables.json?v=1",
   "/manifest.webmanifest",

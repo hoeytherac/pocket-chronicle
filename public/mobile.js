@@ -1944,7 +1944,7 @@
       var card = create("article", "shop-card");
       var copy = document.createElement("div");
       copy.appendChild(create("h3", "", item.name));
-      copy.appendChild(create("p", "", item.description));
+      copy.appendChild(create("p", "", cleanShopDescription(item)));
       copy.appendChild(create("strong", "shop-price", item.price + " " + item.currency));
       card.appendChild(copy);
       var button = create("button", "", "Buy");
@@ -1959,6 +1959,16 @@
     if (!state.snapshot.shop.length) list.appendChild(emptyState("The campaign shop is empty right now."));
     fragment.appendChild(list);
     elements.viewContent.replaceChildren(fragment);
+  }
+
+  function cleanShopDescription(item) {
+    var description = String(item && item.description || "").trim();
+    var name = String(item && item.name || "").trim();
+    if (!name) return description;
+    while (description.toLowerCase().startsWith(name.toLowerCase())) {
+      description = description.slice(name.length).trim();
+    }
+    return description || "No additional details are available.";
   }
 
   function formatCurrency(currency) {
