@@ -3,12 +3,10 @@ import { getDb } from "@/db";
 import { accountPairingCodes, campaigns, pairingCodes, playerAccounts, playerSessions, tenants } from "@/db/schema";
 import { isBridgeOnline } from "@/lib/bridge-presence";
 import { hasCampaignProductAccess } from "@/lib/entitlements";
-import { createPlayerAccountSession } from "@/lib/player-account";
+import { createPlayerAccountSession, PLAYER_SESSION_SECONDS } from "@/lib/player-account";
 import type { Edition, ProductTier, SubscriptionStatus } from "@/lib/protocol";
 import { jsonError } from "@/lib/server-auth";
 import { hashPassword, randomToken, sessionCookie, sha256, verifyPassword } from "@/lib/security";
-
-const SESSION_SECONDS = 60 * 60 * 24 * 30;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { code?: string; password?: string } | null;
@@ -113,12 +111,12 @@ export async function POST(request: Request) {
     actorUuid: pairing.actorUuid,
     tokenHash: await sha256(token),
     createdAt: now,
-    expiresAt: now + SESSION_SECONDS * 1000,
+    expiresAt: now + PLAYER_SESSION_SECONDS * 1000,
   });
   await db.update(pairingCodes).set({ consumedAt: now }).where(eq(pairingCodes.id, pairing.id));
 
   return Response.json(
     { ok: true, playerLabel: pairing.playerLabel },
-    { headers: { "set-cookie": sessionCookie(token, SESSION_SECONDS) } },
+    { headers: { "set-cookie": sessionCookie(token, PLAYER_SESSION_SECONDS) } },
   );
 }

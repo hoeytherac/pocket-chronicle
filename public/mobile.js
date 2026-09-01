@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "0.15.1";
+  var APP_VERSION = "0.15.2";
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
   var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
@@ -37,7 +37,11 @@
     chatContacts: [],
     chatRecipientId: "",
     chatMessages: [],
-    chatLoading: false
+    chatLoading: false,
+    chatAvailable: null,
+    chatError: "",
+    chatDraft: "",
+    chatRefreshTimer: 0
   };
 
   var elements = {};
@@ -73,6 +77,7 @@
     elements.appView.addEventListener("click", handleAppClick);
     elements.appView.addEventListener("submit", handleAppSubmit);
     elements.appView.addEventListener("change", handleAppChange);
+    elements.appView.addEventListener("input", handleAppInput);
     elements.gateContent.addEventListener("submit", handleGateSubmit);
     elements.gateContent.addEventListener("click", handleGateClick);
 
@@ -83,11 +88,18 @@
     window.addEventListener("online", function () {
       if (state.accessRequest) startApprovalPoll();
       else loadState();
+      if (state.tab === "chat" && state.snapshot) void loadPocketMessages(true);
+    });
+    window.addEventListener("offline", function () {
+      state.chatAvailable = false;
+      state.chatError = "This phone is offline. Saved campaign pages still work, and messages will return with the connection.";
+      if (state.tab === "chat" && state.snapshot) renderChat();
     });
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState !== "visible") return;
       if (state.accessRequest) startApprovalPoll();
       else if (state.worldActive || !state.snapshot) loadState(true);
+      if (state.tab === "chat" && state.snapshot) void loadPocketMessages(true);
     });
     window.addEventListener("error", function () {
       showToast("Pocket Chronicle hit a screen error. Your campaign data is safe; tap Home to refresh this view.", 6500);
@@ -101,6 +113,11 @@
     state.refreshTimer = window.setInterval(function () {
       if (state.worldActive && document.visibilityState === "visible" && !state.accessRequest) loadState(true);
     }, 120000);
+    state.chatRefreshTimer = window.setInterval(function () {
+      if (state.tab === "chat" && state.snapshot && !elements.appView.hidden && document.visibilityState === "visible" && navigator.onLine && !state.accessRequest) {
+        void loadPocketMessages(true);
+      }
+    }, 30000);
   }
 
   function readStoredAccount() {
@@ -697,7 +714,7 @@
     elements.statusStrip.classList.toggle("active-world", state.worldActive);
     elements.statusLabel.textContent = state.worldActive
       ? "Active World · " + state.snapshot.campaign.name
-      : "Sleeping World · " + state.snapshot.campaign.name + " · saved locally";
+      : "Sleeping World · " + state.snapshot.campaign.name + " · Pocket Chat available";
   }
 
   function selectTab(tab) {
@@ -1799,6 +1816,8 @@
 
   async function loadPocketMessages(silent) {
     if (!state.snapshot || state.chatLoading) return;
+    var composer = elements.viewContent && elements.viewContent.querySelector("#chat-message");
+    if (composer) state.chatDraft = composer.value;
     state.chatLoading = true;
     if (!silent && state.tab === "chat") renderChat();
     var query = "/api/messages?channel=" + encodeURIComponent(state.chatChannel);
@@ -1806,6 +1825,8 @@
     var result = await api(query);
     state.chatLoading = false;
     if (result.ok) {
+      state.chatAvailable = true;
+      state.chatError = "";
       state.chatContacts = result.data.contacts || [];
       if (state.chatChannel === "dm" && !state.chatContacts.some(function (contact) { return contact.id === state.chatRecipientId; })) {
         state.chatRecipientId = state.chatContacts[0] ? state.chatContacts[0].id : "";
@@ -1818,13 +1839,36 @@
       }
       state.chatMessages = result.data.messages || [];
     }
-    else if (!silent) showToast(result.data.error || "Pocket Chat could not refresh yet.", 4400);
+    else {
+      state.chatAvailable = false;
+      state.chatError = result.data.error || "Pocket Chat could not reach the service yet.";
+      if (result.status === 401 && state.account) {
+        showSignIn("Your saved character is still on this phone, but its secure Pocket Chronicle sign-in expired. Enter your existing account password to restore Chat—no GM approval is needed.");
+        return;
+      }
+      if (!silent) showToast(state.chatError, 4400);
+    }
     if (state.tab === "chat") renderChat();
   }
 
   function renderChat() {
     var fragment = document.createDocumentFragment();
     fragment.appendChild(pageTitle("Pocket correspondence", "Chat", "Party and private player conversations that remain available while Foundry sleeps."));
+    var serviceState = state.chatAvailable === true ? "online" : state.chatAvailable === false ? "unavailable" : "checking";
+    var service = create("section", "chat-service-card " + serviceState);
+    service.appendChild(create("span", "chat-service-sigil", serviceState === "online" ? "✦" : serviceState === "unavailable" ? "!" : "…"));
+    var serviceCopy = create("div", "");
+    serviceCopy.appendChild(create("small", "eyebrow", serviceState === "online" ? "Always-on service" : serviceState === "unavailable" ? "Connection needed" : "Opening correspondence"));
+    serviceCopy.appendChild(create("strong", "", serviceState === "online" ? "Pocket Chat online" : serviceState === "unavailable" ? "Pocket Chat unavailable" : "Checking Pocket Chat"));
+    serviceCopy.appendChild(create("span", "", serviceState === "online"
+      ? "Available during both Active World and Sleeping World. Foundry does not need to be open."
+      : state.chatError || "Connecting to the Pocket Chronicle message service…"));
+    service.appendChild(serviceCopy);
+    var serviceButton = create("button", "chat-service-action", state.chatAvailable === false && /sign in|pair/i.test(state.chatError) ? "Sign in" : "Refresh");
+    serviceButton.type = "button";
+    serviceButton.dataset.action = state.chatAvailable === false && /sign in|pair/i.test(state.chatError) ? "sign-in-chat" : "refresh-chat";
+    service.appendChild(serviceButton);
+    fragment.appendChild(service);
     var channels = create("div", "chat-channels");
     [["group", "Party chat", "Everyone in this campaign"], ["dm", "Direct messages", "Private player to player"]].forEach(function (entry) {
       var button = create("button", state.chatChannel === entry[0] ? "active" : "");
@@ -1892,6 +1936,7 @@
     input.setAttribute("aria-label", "Pocket Chat message");
     input.required = true;
     input.maxLength = 2000;
+    input.value = state.chatDraft;
     input.disabled = state.chatChannel === "dm" && !selectedContact;
     var send = create("button", "", "Send");
     send.type = "submit";
@@ -2133,6 +2178,8 @@
       void loadPocketMessages(true);
     } else if (action === "refresh-chat") {
       void loadPocketMessages();
+    } else if (action === "sign-in-chat") {
+      showSignIn();
     } else if (action === "purchase") {
       button.disabled = true;
       sendAction("purchase", { itemUuid: button.dataset.value, quantity: 1 }, (button.dataset.label || "Item") + " purchased and added to inventory.").then(function () { button.disabled = false; });
@@ -2151,10 +2198,21 @@
       post("/api/messages", { channel: state.chatChannel, recipientAccountId: state.chatChannel === "dm" ? state.chatRecipientId : "", content: content }).then(function (result) {
         submit.disabled = false;
         if (!result.ok) {
+          if (result.status === 0 || result.status === 401 || result.status >= 500) {
+            state.chatAvailable = false;
+            state.chatError = result.data.error || "Pocket Chat could not reach the service yet.";
+          }
+          if (result.status === 401 && state.account) {
+            showSignIn("Your Pocket Chronicle sign-in expired. Enter your existing account password to send messages again—no GM approval is needed.");
+            return;
+          }
           showToast(result.data.error || "That Pocket Chat message could not be sent.", 4800);
           return;
         }
         input.value = "";
+        state.chatDraft = "";
+        state.chatAvailable = true;
+        state.chatError = "";
         state.chatMessages.push(result.data.message);
         renderChat();
       });
@@ -2207,6 +2265,10 @@
       renderChat();
       void loadPocketMessages(true);
     }
+  }
+
+  function handleAppInput(event) {
+    if (event.target && event.target.id === "chat-message") state.chatDraft = event.target.value;
   }
 
   async function sendAction(kind, payload, success, options) {
