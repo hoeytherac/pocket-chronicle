@@ -89,7 +89,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=23/);
+  assert.match(mobile, /mobile\.js\?v=24/);
   assert.match(mobile, /mobile\.css\?v=24/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
@@ -145,6 +145,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /parseExpression/);
   assert.match(mobileScript, /renderSpells/);
   assert.match(mobileScript, /renderEquipment/);
+  assert.match(mobileScript, /cleanShopDescription/);
   assert.match(mobileScript, /localSpellSlots/);
   assert.match(mobileScript, /loadPocketMessages/);
   assert.match(mobileScript, /Direct messages/);
