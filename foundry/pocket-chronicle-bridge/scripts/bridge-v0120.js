@@ -1,10 +1,18 @@
-/* Pocket Chronicle Bridge v0.15.0 */
+/* Pocket Chronicle Bridge v0.15.1 */
 /* global Hooks, game, ui, fromUuid, CONFIG, Roll, ChatMessage, foundry, Dialog */
 const MODULE_ID = "pocket-chronicle-bridge";
 const SHOP_FLAG = "shop";
 const SHARED_FLAG = "shared";
 const REST_RATIONS_FLAG = "restRations";
 const LEGACY_REST_RATIONS_ID = "pocket-chronicle-rest-rations";
+const EXODUSTERS_CAMPAIGN_ID = "exodusters";
+const CAMPAIGN_PACKS = Object.freeze({
+  [EXODUSTERS_CAMPAIGN_ID]: Object.freeze({
+    id: EXODUSTERS_CAMPAIGN_ID,
+    label: "The Exodusters",
+    features: Object.freeze(["fieldTables", "localInjuries", "restRations"]),
+  }),
+});
 const PROVISION_FOLDER_NAME = "Pocket Chronicle — Rest & Rations";
 const BUILT_IN_PROVISIONS = [
   { key: "hearty-feast", name: "Hearty Feast", kind: "food", tier: "great", price: { value: 1, denomination: "gp" }, image: "icons/consumables/food/plate-ribs-gravy.webp", effect: "Short rest: add proficiency bonus to every Hit Die spent. Long rest: gain 25 temporary HP." },
@@ -30,6 +38,15 @@ const displayedAccessRequests = new Set();
 const bridgeExtensions = new Map();
 const dirtyActorIds = new Set();
 let fullSnapshotRequested = false;
+
+function campaignPack() {
+  const campaignId = String(game.settings.get(MODULE_ID, "campaignId") || "").trim().toLowerCase();
+  return CAMPAIGN_PACKS[campaignId] || null;
+}
+
+function campaignPackSupports(feature) {
+  return Boolean(campaignPack()?.features.includes(String(feature || "")));
+}
 
 function integratedRestRationsFlags(document) {
   const flags = document?.flags || document?._source?.flags || {};
@@ -74,7 +91,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) moduleRecord.api = {
-    version: "0.15.0",
+    version: "0.15.1",
     startActiveWorld,
     endActiveWorld,
     syncNow: syncActiveWorld,
@@ -124,10 +141,12 @@ Hooks.once("ready", async () => {
   Hooks.callAll("pocketChronicleBridgeReady", moduleRecord?.api);
 
   if (!game.user?.isGM) return;
-  try { await ensureBuiltInProvisions(); }
-  catch (error) {
-    console.error(`${MODULE_ID} | Could not prepare Rest & Rations`, error);
-    ui.notifications.warn(`Pocket Chronicle could not prepare Rest & Rations: ${error.message || error}`);
+  if (campaignPackSupports("restRations")) {
+    try { await ensureBuiltInProvisions(); }
+    catch (error) {
+      console.error(`${MODULE_ID} | Could not prepare the Exodusters Rest & Rations pack`, error);
+      ui.notifications.warn(`Pocket Chronicle could not prepare the Exodusters Rest & Rations pack: ${error.message || error}`);
+    }
   }
   if (game.settings.get(MODULE_ID, "worldActive")) startBridge();
 });
@@ -882,7 +901,7 @@ async function executeExtensionAction(action, context) {
 
 function availableExtensions() {
   const extensions = new Map(bridgeExtensions);
-  if (!extensions.has("restRations")) {
+  if (campaignPackSupports("restRations") && !extensions.has("restRations")) {
     const restRations = game.modules.get(LEGACY_REST_RATIONS_ID);
     const api = restRations?.active ? restRations.api : null;
     if (typeof api?.getSnapshotData === "function" && typeof api?.executeAction === "function") {
@@ -893,7 +912,7 @@ function availableExtensions() {
       });
     }
   }
-  if (!extensions.has("restRations")) {
+  if (campaignPackSupports("restRations") && !extensions.has("restRations")) {
     extensions.set("restRations", {
       actionKinds: ["takeRationsRest"],
       getSnapshotData: builtInRestSnapshot,
@@ -1127,9 +1146,16 @@ async function buildSnapshot(actor) {
     || ["weapon", "spell", "feat", "consumable", "equipment", "tool", "loot", "container", "backpack"].includes(item.type)
   ));
   const journals = game.journal.filter((journal) => journal.getFlag(MODULE_ID, SHARED_FLAG));
-  const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG));
+  const pack = campaignPack();
+  const shop = game.items.filter((item) => item.getFlag(MODULE_ID, SHOP_FLAG)
+    && (campaignPackSupports("restRations") || !restRationsFlag(item, "provisionKey")));
   return {
-    campaign: { id: config().campaignId, name: game.world.title, edition: "personal" },
+    campaign: {
+      id: config().campaignId,
+      name: game.world.title,
+      edition: "personal",
+      pack: pack ? { id: pack.id, label: pack.label, features: [...pack.features] } : null,
+    },
     actor: {
       uuid: actor.uuid,
       name: actor.name,
@@ -1433,18 +1459,22 @@ async function createPairing(actorUuid, playerLabel = "Player") {
 
 async function openShopManager() {
   if (!game.user?.isGM) throw new Error("Only a GM can manage the Pocket Chronicle shop.");
-  const items = [...game.items].sort((a, b) => a.name.localeCompare(b.name));
+  const hasRationsPack = campaignPackSupports("restRations");
+  const items = [...game.items]
+    .filter((item) => hasRationsPack || !restRationsFlag(item, "provisionKey"))
+    .sort((a, b) => a.name.localeCompare(b.name));
   if (!items.length) {
     ui.notifications.warn("Create or import at least one world Item before opening the phone shop manager.");
     return false;
   }
   const rows = items.map((item) => {
-    const permanent = Boolean(restRationsFlag(item, "permanentShop"));
+    const permanent = hasRationsPack && Boolean(restRationsFlag(item, "permanentShop"));
     const checked = permanent || Boolean(item.getFlag(MODULE_ID, SHOP_FLAG));
     const price = shopPrice(item);
     return `<label class="pocket-chronicle-shop-row"><input type="checkbox" data-item-id="${item.id}" ${checked ? "checked" : ""} ${permanent ? "disabled" : ""}><span><strong>${foundry.utils.escapeHTML(item.name)}</strong><small>${foundry.utils.escapeHTML(item.type)} · ${price.value} ${price.currency}${permanent ? " · Rest & Rations fixture" : ""}</small></span></label>`;
   }).join("");
-  const content = `<form class="pocket-chronicle-shop-manager"><p>Choose the world Items players can purchase in the phone app. Rest & Rations provisions remain permanent shop fixtures.</p><div class="pocket-chronicle-shop-list">${rows}</div></form>`;
+  const fixtureCopy = hasRationsPack ? " Exodusters provisions remain permanent fixtures for this campaign pack." : "";
+  const content = `<form class="pocket-chronicle-shop-manager"><p>Choose the world Items players can purchase in the phone app.${fixtureCopy}</p><div class="pocket-chronicle-shop-list">${rows}</div></form>`;
   const readSelection = (button) => new Set(Array.from(button?.form?.querySelectorAll("input[data-item-id]:checked") || []).map((input) => input.dataset.itemId));
   const DialogV2 = foundry.applications?.api?.DialogV2;
   let selected = null;
@@ -1475,7 +1505,7 @@ async function openShopManager() {
   }
   if (!(selected instanceof Set)) return false;
   for (const item of items) {
-    const permanent = Boolean(restRationsFlag(item, "permanentShop"));
+    const permanent = hasRationsPack && Boolean(restRationsFlag(item, "permanentShop"));
     const shared = permanent || selected.has(item.id);
     if (Boolean(item.getFlag(MODULE_ID, SHOP_FLAG)) === shared) continue;
     if (shared) await item.setFlag(MODULE_ID, SHOP_FLAG, true);
@@ -1523,7 +1553,7 @@ function builtInProvisionData(provision) {
 }
 
 async function ensureBuiltInProvisions() {
-  if (!game.user?.isGM) return [];
+  if (!game.user?.isGM || !campaignPackSupports("restRations")) return [];
   let folder = game.folders.find((entry) => entry.type === "Item" && entry.getFlag(MODULE_ID, "provisionFolder"));
   if (!folder) {
     const FolderDocument = CONFIG.Folder?.documentClass;

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "0.15.0";
+  var APP_VERSION = "0.15.1";
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
   var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
@@ -305,7 +305,7 @@
     showGate("Connect your campaign", "Enter the Campaign ID and permanent six-character Campaign code your GM saved in Foundry.");
     var form = create("form", "field-stack");
     form.dataset.form = "campaign";
-    form.appendChild(labelledInput("Campaign ID", "campaign-id", "text", state.campaignId, "exodusters"));
+    form.appendChild(labelledInput("Campaign ID", "campaign-id", "text", state.campaignId, "your-campaign"));
     var codeField = labelledInput("Campaign code", "campaign-code", "text", state.campaignCode, "ABC123");
     codeField.querySelector("input").className = "campaign-code";
     codeField.querySelector("input").maxLength = 6;
@@ -366,7 +366,7 @@
     showGate("Reset " + name + "’s password", "Re-enter the Campaign ID and six-character Campaign code. A reset request will be sent to your GM in Foundry.");
     var form = create("form", "field-stack");
     form.dataset.form = "password-reset-campaign";
-    form.appendChild(labelledInput("Campaign ID", "reset-campaign-id", "text", state.campaignId, "exodusters"));
+    form.appendChild(labelledInput("Campaign ID", "reset-campaign-id", "text", state.campaignId, "your-campaign"));
     var codeField = labelledInput("Campaign code", "reset-campaign-code", "text", state.campaignCode, "ABC123");
     codeField.querySelector("input").className = "campaign-code";
     codeField.querySelector("input").maxLength = 6;
@@ -781,6 +781,7 @@
   }
 
   function restLaunchCard(location) {
+    if (!campaignHasFeature("restRations")) return null;
     var extension = restRationsData();
     var card = create("section", "rest-launch-card " + (location === "home" ? "rest-launch-home" : "rest-launch-sheet"));
     var sigil = create("span", "rest-launch-sigil", "☾");
@@ -933,8 +934,9 @@
     if (picker) fragment.appendChild(picker);
     fragment.appendChild(heroCard());
     fragment.appendChild(stressCard());
-    fragment.appendChild(restLaunchCard("home"));
-    if (isExodustersCampaign()) fragment.appendChild(exodustersFieldTables());
+    var homeRest = restLaunchCard("home");
+    if (homeRest) fragment.appendChild(homeRest);
+    if (campaignHasFeature("fieldTables")) fragment.appendChild(exodustersFieldTables());
     fragment.appendChild(combatTracker());
 
     var session = create("section", "card session-card");
@@ -953,8 +955,19 @@
     elements.viewContent.replaceChildren(fragment);
   }
 
+  function campaignHasFeature(feature) {
+    var campaign = state.snapshot && state.snapshot.campaign;
+    if (!campaign) return false;
+    var pack = campaign.pack;
+    if (pack && Array.isArray(pack.features)) return pack.features.includes(feature);
+    var legacyExodusters = String(campaign.id || "").trim().toLowerCase() === "exodusters";
+    return legacyExodusters && ["fieldTables", "localInjuries", "restRations"].includes(feature);
+  }
+
   function isExodustersCampaign() {
-    return Boolean(state.snapshot && state.snapshot.campaign && String(state.snapshot.campaign.id || "").trim().toLowerCase() === "exodusters");
+    var campaign = state.snapshot && state.snapshot.campaign;
+    var packId = campaign && campaign.pack && campaign.pack.id;
+    return String(packId || campaign && campaign.id || "").trim().toLowerCase() === "exodusters";
   }
 
   function exodustersFieldTables() {
@@ -1121,7 +1134,7 @@
     fragment.appendChild(quick);
     var sheetRest = restLaunchCard("sheet");
     if (sheetRest) fragment.appendChild(sheetRest);
-    if (isExodustersCampaign()) fragment.appendChild(localInjuriesCard());
+    if (campaignHasFeature("localInjuries")) fragment.appendChild(localInjuriesCard());
 
     var death = actor.deathSaves || { successes: 0, failures: 0 };
     var deathCard = create("section", "death-card");
