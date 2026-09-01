@@ -54,7 +54,7 @@ test("ships the installable app and secure bridge boundaries", async () => {
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0120.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge.js", import.meta.url), "utf8"),
-    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0150.js", import.meta.url), "utf8"),
+    readFile(new URL("../foundry/pocket-chronicle-bridge/scripts/bridge-v0151.js", import.meta.url), "utf8"),
     readFile(new URL("../foundry/pocket-chronicle-bridge/module.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/heartbeat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/bridge/access-requests/route.ts", import.meta.url), "utf8"),
@@ -84,13 +84,13 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(manifest, /"start_url": "\/mobile\.html\?pwa=30"/);
   assert.match(serviceWorker, /addEventListener\("fetch"/);
   assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /pocket-chronicle-v0150/);
+  assert.match(serviceWorker, /pocket-chronicle-v0151/);
   assert.match(serviceWorker, /getting-started\.html/);
-  assert.match(serviceWorker, /exodusters-tables\.json/);
+  assert.doesNotMatch(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=24/);
-  assert.match(mobile, /mobile\.css\?v=24/);
+  assert.match(mobile, /mobile\.js\?v=25/);
+  assert.match(mobile, /mobile\.css\?v=25/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -177,7 +177,9 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(mobileScript, /roll-exodus-event/);
   assert.match(mobileScript, /roll-exodus-injury/);
   assert.match(mobileScript, /pocket-chronicle-local-injuries-v1/);
-  assert.match(mobileScript, /String\(state\.snapshot\.campaign\.id/);
+  assert.match(mobileScript, /campaignHasFeature\("fieldTables"\)/);
+  assert.match(mobileScript, /campaignHasFeature\("localInjuries"\)/);
+  assert.match(mobileScript, /campaignHasFeature\("restRations"\)/);
   assert.equal(exodustersTables.campaignId, "exodusters");
   assert.equal(exodustersTables.events.length, 100);
   assert.equal(exodustersTables.injuries.length, 50);
@@ -213,6 +215,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /pocket-chronicle-rest-rations/);
   assert.match(bridge, /integratedRestRationsFlags/);
   assert.match(bridge, /restRationsFlag/);
+  assert.match(bridge, /const CAMPAIGN_PACKS/);
+  assert.match(bridge, /campaignPackSupports\("restRations"\)/);
+  assert.match(bridge, /!game\.user\?\.isGM \|\| !campaignPackSupports\("restRations"\)/);
+  assert.match(bridge, /campaignPackSupports\("restRations"\) \|\| !restRationsFlag\(item, "provisionKey"\)/);
   assert.doesNotMatch(bridge, /getFlag\((?:LEGACY_REST_RATIONS_ID|"pocket-chronicle-rest-rations")/);
   assert.doesNotMatch(bridge, /actor\.items\.flatMap/);
   assert.match(bridge, /collectionValues\(actor\.items\)\.flatMap/);
@@ -253,10 +259,10 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.match(bridge, /worldSessionSnapshot/);
   assert.match(bridge, /dateLabel/);
   assert.doesNotMatch(bridge, /subtitle: "Shared from Foundry"/);
-  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.15\.0/);
-  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.15\.0/);
-  assert.match(moduleManifest, /bridge-v0150\.js/);
-  assert.match(moduleManifest, /"version": "0\.15\.0"/);
+  assert.match(compatibilityLoader, /bridge-v0120\.js\?v=0\.15\.1/);
+  assert.match(releaseLoader, /bridge-v0120\.js\?v=0\.15\.1/);
+  assert.match(moduleManifest, /bridge-v0151\.js/);
+  assert.match(moduleManifest, /"version": "0\.15\.1"/);
   assert.doesNotMatch(heartbeat, /pairingPasswordHash/);
   assert.match(heartbeat, /lastSeenAt/);
   assert.match(bridgeAccessRequests, /readPendingAccessRequests/);

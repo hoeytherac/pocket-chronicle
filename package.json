@@ -1,6 +1,6 @@
 {
   "name": "pocket-chronicle",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern outputs/launch-media/.tools",
     "typecheck": "tsc --noEmit",
     "validate": "npm run lint && npm run typecheck && npm test",
     "db:generate": "drizzle-kit generate",
