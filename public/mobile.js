@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  var APP_VERSION = "0.15.0";
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
   var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
@@ -2843,10 +2844,12 @@
     var panel = create("div", "sheet-panel");
     panel.appendChild(create("strong", "", state.account ? state.account.playerLabel : "Player account"));
     panel.appendChild(create("small", "", state.snapshot.campaign.name + " · " + state.characters.length + (state.characters.length === 1 ? " character" : " characters")));
+    panel.appendChild(create("small", "app-version", "Pocket Chronicle " + APP_VERSION));
     var refresh = settingsAction("↻", "Refresh App", "Check for the newest Pocket Chronicle update without removing saved data.", refreshApp);
+    var help = settingsAction("?", "Setup & help", "Installation, pairing, privacy, and troubleshooting for players and GMs.", openGettingStarted);
     var install = settingsAction("⌂", "Install on this phone", "Open Pocket Chronicle from the home screen.", installApp);
     var another = settingsAction("◇", "Connect a different campaign", "Use another Campaign ID and permanent six-character code.", restartPairing);
-    elements.modalContent.replaceChildren(panel, refresh, install, another);
+    elements.modalContent.replaceChildren(panel, refresh, help, install, another);
     elements.modal.hidden = false;
   }
 
@@ -2873,6 +2876,10 @@
       await fetch("/mobile.html?refresh=" + Date.now(), { cache: "reload" });
     } catch { /* Reloading still preserves the installed offline copy when the network is unavailable. */ }
     window.location.assign("/mobile.html?refresh=" + Date.now());
+  }
+
+  function openGettingStarted() {
+    window.location.assign("/getting-started.html");
   }
 
   function closeSettings() { elements.modal.hidden = true; }

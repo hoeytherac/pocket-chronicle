@@ -30,6 +30,8 @@ Everything in The Raccoon Den, plus:
 
 Start this tier with a 25-member beta limit. Raise the limit only after reviewing a full month of Cloudflare and support usage.
 
+Every Keeper installs the same public Pocket Chronicle Bridge module into their own Foundry server. Their Campaign ID and private bridge key are provisioned separately for their world, so they never connect to Colesen's `grand-blooming` or `exodusters` campaigns. Never place a customer's bridge key inside a module ZIP or public post.
+
 ## Launch sequence
 
 1. Keep the Patreon page unpublished while tiers, welcome copy, and policies are reviewed.
