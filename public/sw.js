@@ -1,8 +1,9 @@
-const CACHE = "pocket-chronicle-v0148-1";
+const CACHE = "pocket-chronicle-v0150-1";
 const SHELL = [
   "/mobile.html",
-  "/mobile.css?v=23",
-  "/mobile.js?v=22",
+  "/mobile.css?v=24",
+  "/mobile.js?v=23",
+  "/getting-started.html",
   "/exodusters-tables.json?v=1",
   "/manifest.webmanifest",
   "/favicon.svg",
@@ -27,8 +28,8 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
-  const isMobileNavigation = request.mode === "navigate" && (url.pathname === "/" || url.pathname === "/mobile.html");
-  const isShellAsset = ["/mobile.css", "/mobile.js", "/exodusters-tables.json", "/manifest.webmanifest", "/favicon.svg", "/icon-180.png"].includes(url.pathname);
+  const isMobileNavigation = request.mode === "navigate" && (url.pathname === "/" || url.pathname === "/mobile.html" || url.pathname === "/getting-started.html");
+  const isShellAsset = ["/mobile.css", "/mobile.js", "/getting-started.html", "/exodusters-tables.json", "/manifest.webmanifest", "/favicon.svg", "/icon-180.png"].includes(url.pathname);
   if (!isMobileNavigation && !isShellAsset) return;
   event.respondWith(fetch(request).then((response) => {
     if (response.ok) {
@@ -39,6 +40,6 @@ self.addEventListener("fetch", (event) => {
   }).catch(async () => {
     const exact = await caches.match(request);
     if (exact) return exact;
-    return caches.match("/mobile.html");
+    return caches.match(url.pathname === "/getting-started.html" ? "/getting-started.html" : "/mobile.html");
   }));
 });

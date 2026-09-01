@@ -62,6 +62,10 @@ The personal deployment is live at:
 
 `https://pocket-chronicle.colesen.workers.dev`
 
+The friendly GM and player setup guide is available inside **Phone settings → Setup & help** or directly at:
+
+`https://pocket-chronicle.colesen.workers.dev/getting-started.html`
+
 Pocket Chronicle uses Cloudflare Workers rather than static Pages because its pairing, relay API, and D1 database all require server-side code. The free `workers.dev` address does not require a purchased domain.
 
 After authenticating Wrangler and creating the D1 database named `pocket-chronicle`, deploy updates with:
@@ -97,6 +101,8 @@ await game.modules.get("pocket-chronicle-bridge").api.shareShopItem("Item.YOUR_U
 ```
 
 During Active World, the module renews a short server lease and processes live actions. During Sleeping World, the phone reads the last approved snapshot without continuous state polling. Each DM can use the same module with their own Foundry HTTPS address and unique campaign credentials; the hosted app never logs into or pulls directly from their server.
+
+For the Chronicle Keeper beta, Colesen self-hosts one relay in Colesen's Cloudflare account. Every member remains isolated by tenant, Campaign ID, and hashed bridge credentials. Members install the same public Bridge package, but never receive or use the credentials for `grand-blooming`, `exodusters`, or another member's campaign.
 
 ## Repository map
 

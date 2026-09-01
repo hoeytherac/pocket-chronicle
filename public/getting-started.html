@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#10131a">
+    <title>Getting Started · Pocket Chronicle</title>
+    <link rel="icon" href="/favicon.svg">
+    <style>
+      :root { color-scheme: dark; --ink:#f4f5f7; --muted:#aeb8c6; --blue:#9fc2e4; --line:#344156; --surface:#151b25; --surface-2:#192230; --canvas:#0f1218; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--canvas); color:var(--ink); }
+      * { box-sizing:border-box; }
+      html { scroll-behavior:smooth; }
+      body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -10%,rgba(107,150,192,.2),transparent 32%),linear-gradient(180deg,#111722,#0e1117 60%); }
+      a { color:inherit; }
+      button { color:inherit; font:inherit; }
+      .shell { width:min(100% - 32px,760px); margin:auto; padding:max(24px,env(safe-area-inset-top)) 0 max(44px,env(safe-area-inset-bottom)); }
+      .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+      .brand { display:flex; align-items:center; gap:12px; text-decoration:none; }
+      .mark { width:48px; height:48px; display:grid; place-items:center; flex:0 0 48px; border:1px solid #58718b; border-radius:16px; background:#171e29; color:#c8dcf0; font:22px Georgia,serif; }
+      .brand span:last-child { display:grid; }
+      .brand small,.eyebrow { color:var(--blue); font-size:10px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+      .brand strong { font:500 23px/1 Georgia,"Times New Roman",serif; }
+      .back { padding:11px 14px; border:1px solid var(--line); border-radius:13px; background:var(--surface); color:#cad9e8; font-size:12px; font-weight:750; text-decoration:none; }
+      .hero { padding:56px 0 30px; }
+      h1,h2 { margin:0; font-family:Georgia,"Times New Roman",serif; font-weight:500; }
+      h1 { max-width:670px; margin-top:12px; font-size:clamp(42px,10vw,72px); line-height:.98; }
+      .lead { max-width:650px; margin:18px 0 0; color:#bdc7d4; font-size:clamp(17px,4vw,21px); line-height:1.55; }
+      .notice { margin-top:26px; padding:18px; display:grid; grid-template-columns:44px minmax(0,1fr); gap:14px; border:1px solid #4b6580; border-radius:20px; background:linear-gradient(145deg,rgba(31,49,68,.96),rgba(19,27,38,.98)); }
+      .notice-mark { width:44px; height:44px; display:grid; place-items:center; border:1px solid #6c8dac; border-radius:14px; color:#d6eafa; font:24px Georgia,serif; }
+      .notice strong { display:block; color:#e5edf5; }
+      .notice p { margin:5px 0 0; color:#aebdca; font-size:13px; line-height:1.55; }
+      .chooser { margin:26px 0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+      .chooser a { padding:17px; border:1px solid var(--line); border-radius:17px; background:var(--surface); text-decoration:none; }
+      .chooser strong { display:block; color:#dce8f3; }
+      .chooser small { display:block; margin-top:5px; color:var(--muted); line-height:1.45; }
+      section.guide { margin-top:16px; padding:24px; border:1px solid var(--line); border-radius:24px; background:linear-gradient(145deg,rgba(24,32,44,.98),rgba(17,23,32,.98)); box-shadow:0 18px 50px rgba(0,0,0,.2); }
+      .guide h2 { margin-top:7px; font-size:clamp(31px,7vw,45px); }
+      .guide-intro { margin:10px 0 0; color:var(--muted); line-height:1.55; }
+      ol { margin:22px 0 0; padding:0; list-style:none; counter-reset:steps; display:grid; gap:13px; }
+      li { min-width:0; padding:15px; display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; counter-increment:steps; border:1px solid #303e51; border-radius:16px; background:#131a24; }
+      li::before { width:34px; height:34px; display:grid; place-items:center; border:1px solid #53718e; border-radius:11px; background:#1a2a3a; color:#b9d8ef; font-weight:800; content:counter(steps); }
+      li strong { display:block; color:#e1e9f1; }
+      li span { min-width:0; display:block; margin-top:4px; color:#9facba; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+      .actions { margin-top:18px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+      .button { min-height:50px; padding:13px 15px; display:grid; place-items:center; border:1px solid #6a89a7; border-radius:15px; background:linear-gradient(180deg,#587b9c,#3f5e7b); color:white; font-weight:800; text-align:center; text-decoration:none; }
+      .button.secondary { border-color:#3c4d61; background:#17202c; color:#c7d7e6; }
+      .copy-row { margin-top:12px; padding:13px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; border:1px solid #303e51; border-radius:14px; background:#0f151e; }
+      code { min-width:0; align-self:center; color:#b9d7ed; font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+      .copy-row button { padding:9px 11px; border:1px solid #4f6d88; border-radius:10px; background:#1c2a39; color:#cee3f3; font-size:11px; font-weight:750; }
+      .privacy { margin-top:16px; padding:18px; border-left:3px solid #78a2c6; background:rgba(25,35,48,.72); color:#b5c2ce; font-size:13px; line-height:1.6; }
+      .trouble { margin-top:26px; }
+      details { margin-top:9px; border:1px solid var(--line); border-radius:15px; background:var(--surface); }
+      summary { padding:15px; cursor:pointer; color:#d9e4ee; font-weight:750; }
+      details p { margin:0; padding:0 15px 16px; color:var(--muted); font-size:13px; line-height:1.55; }
+      footer { padding:34px 4px 0; color:#748294; font-size:11px; line-height:1.5; text-align:center; }
+      @media (max-width:560px) { .shell{width:min(100% - 24px,760px)} .chooser,.actions{grid-template-columns:1fr} section.guide{padding:19px} .topbar .brand small{display:none} .copy-row{grid-template-columns:1fr} .copy-row button{justify-self:start} }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/mobile.html"><span class="mark">PC</span><span><small>Foundry companion</small><strong>Pocket Chronicle</strong></span></a>
+        <a class="back" href="/mobile.html">Back to app</a>
+      </header>
+
+      <div class="hero">
+        <p class="eyebrow">Welcome to the Chronicle</p>
+        <h1>Your world, carried in your pocket.</h1>
+        <p class="lead">Here is everything a GM or player needs to install, connect, and use Pocket Chronicle without sharing a Foundry password.</p>
+        <div class="notice">
+          <span class="notice-mark">◇</span>
+          <div><strong>The same Bridge, your own private world.</strong><p>Every Chronicle Keeper installs the same clean Bridge module. Your Campaign ID and private bridge key are created only for your world, so you are never connected to Colesen's personal campaigns.</p></div>
+        </div>
+      </div>
+
+      <nav class="chooser" aria-label="Choose setup guide">
+        <a href="#gm"><strong>I am the GM</strong><small>Install the Bridge and connect your own Foundry world.</small></a>
+        <a href="#player"><strong>I am a player</strong><small>Pair your phone, choose your account, and install the app.</small></a>
+      </nav>
+
+      <section id="gm" class="guide">
+        <p class="eyebrow">Chronicle Keeper</p>
+        <h2>GM quick start</h2>
+        <p class="guide-intro">Your Keeper membership supports one active Foundry world and up to eight players during the beta.</p>
+        <ol>
+          <li><div><strong>Receive your private world details</strong><span>After joining, Colesen provisions your Campaign ID and private bridge key. Keep the key private; players never need it.</span></div></li>
+          <li><div><strong>Install Pocket Chronicle Bridge</strong><span>In Foundry's Add-on Modules screen, paste the manifest link below. Enable Pocket Chronicle Bridge in your world after Foundry installs it.</span></div></li>
+          <li><div><strong>Connect your world</strong><span>Open Game Settings → Configure Settings → Pocket Chronicle Bridge. Enter the app address, your Campaign ID, and your private bridge key.</span></div></li>
+          <li><div><strong>Choose your player code</strong><span>Create a permanent six-character Campaign code. This is the only connection code your players need; it is not the private bridge key.</span></div></li>
+          <li><div><strong>Approve each player once</strong><span>Players choose their existing Foundry account. Approve the named request, then they create a separate Pocket Chronicle password.</span></div></li>
+          <li><div><strong>Run your session</strong><span>Use Start Active World and Sync Now during play. End Session creates a readable Sleeping World while live actions, rests, and the shop remain safely closed.</span></div></li>
+        </ol>
+        <div class="copy-row"><code id="manifest">https://raw.githubusercontent.com/hoeytherac/pocket-chronicle/main/foundry/pocket-chronicle-bridge/module.json</code><button type="button" data-copy="manifest">Copy manifest</button></div>
+        <div class="actions"><a class="button" href="https://github.com/hoeytherac/pocket-chronicle/releases/tag/v0.15.0">Open Bridge release</a><a class="button secondary" href="https://www.patreon.com/c/Colesen/membership">Membership details</a></div>
+      </section>
+
+      <section id="player" class="guide">
+        <p class="eyebrow">Player setup</p>
+        <h2>Bring your character along</h2>
+        <ol>
+          <li><div><strong>Ask your GM for two things</strong><span>You need the Campaign ID and the permanent six-character Campaign code. You do not need the private bridge key.</span></div></li>
+          <li><div><strong>Open Pocket Chronicle</strong><span>Enter those two campaign details, then choose your own existing Foundry player account.</span></div></li>
+          <li><div><strong>Wait for the one-time approval</strong><span>Your GM approves your named account. Pocket Chronicle will then ask you to create a separate app password.</span></div></li>
+          <li><div><strong>Choose your character</strong><span>Every character assigned to your Foundry account appears automatically. Your GM does not need to pair each sheet separately.</span></div></li>
+          <li><div><strong>Install it on your phone</strong><span>On iPhone, use Safari → Share → Add to Home Screen. On Android, use Chrome → menu → Install app or Add to Home screen.</span></div></li>
+        </ol>
+        <div class="privacy"><strong>Your safety comes first.</strong> Pocket Chronicle will never ask for your Foundry password. The phone receives approved character and journal information, not the Scene canvas. Your Pocket Chronicle password is separate.</div>
+        <div class="actions"><a class="button" href="/mobile.html">Open Pocket Chronicle</a><a class="button secondary" href="https://www.patreon.com/c/Colesen">Visit Colesen on Patreon</a></div>
+      </section>
+
+      <section class="guide trouble">
+        <p class="eyebrow">A little help</p>
+        <h2>Common fixes</h2>
+        <details><summary>The app says Sleeping World</summary><p>This is normal outside a live session. Your saved character stays readable. The GM starts Active World when live actions, combat, rests, and shopping should open.</p></details>
+        <details><summary>I cannot see my character</summary><p>Ask the GM to assign the Actor to your Foundry user, then use Sync Now in the Bridge settings. Refresh the phone app afterward.</p></details>
+        <details><summary>My password does not work</summary><p>Tap “Forgot or reset this password,” enter the campaign details again, and ask the GM to approve the named reset request in Bridge settings.</p></details>
+        <details><summary>The app looks out of date</summary><p>Open the three-dot Phone Settings menu and tap Refresh App. Your saved account and Sleeping World data stay in place.</p></details>
+      </section>
+
+      <footer>Pocket Chronicle 0.15.0 · Built by Colesen · No Foundry password or Scene canvas is sent to the phone.</footer>
+    </main>
+    <script>
+      document.querySelectorAll("[data-copy]").forEach(function (button) {
+        button.addEventListener("click", async function () {
+          var target = document.getElementById(button.getAttribute("data-copy"));
+          try { await navigator.clipboard.writeText(target.textContent); button.textContent = "Copied"; }
+          catch { window.getSelection().selectAllChildren(target); button.textContent = "Selected"; }
+        });
+      });
+    </script>
+  </body>
+</html>
