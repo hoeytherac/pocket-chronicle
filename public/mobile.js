@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "0.15.2";
+  var APP_VERSION = "0.15.2 · display update 27";
   var ACCOUNT_STORAGE = "pocket-chronicle-account";
   var ACCESS_REQUEST_STORAGE = "pocket-chronicle-access-request";
   var CHARACTER_STORAGE = "pocket-chronicle-character";
@@ -712,9 +712,9 @@
     if (!state.snapshot) return;
     elements.statusStrip.classList.toggle("offline", !state.worldActive);
     elements.statusStrip.classList.toggle("active-world", state.worldActive);
-    elements.statusLabel.textContent = state.worldActive
+    elements.statusLabel.textContent = playerText(state.worldActive
       ? "Active World · " + state.snapshot.campaign.name
-      : "Sleeping World · " + state.snapshot.campaign.name + " · Pocket Chat available";
+      : "Sleeping World · " + state.snapshot.campaign.name + " · Pocket Chat available");
   }
 
   function selectTab(tab) {
@@ -757,7 +757,7 @@
     state.characters.forEach(function (character) {
       var option = document.createElement("option");
       option.value = character.uuid;
-      option.textContent = character.name + " · Level " + character.level;
+      option.textContent = playerText(character.name) + " · Level " + character.level;
       option.selected = character.uuid === state.snapshot.actor.uuid;
       select.appendChild(option);
     });
@@ -833,7 +833,7 @@
     provisions.forEach(function (provision) {
       var option = document.createElement("option");
       option.value = provision.uuid;
-      option.textContent = provision.name + " · " + provision.quantity + " available";
+      option.textContent = playerText(provision.name) + " · " + provision.quantity + " available";
       option.dataset.effect = provision.effect || "";
       select.appendChild(option);
     });
@@ -1690,7 +1690,7 @@
         image.loading = "lazy";
         reader.appendChild(image);
       }
-      reader.appendChild(create("div", "journal-body", journal.content || ""));
+      reader.appendChild(create("div", "journal-body", journal.local ? journal.content || "" : playerText(journal.content, { explain: true })));
       elements.viewContent.replaceChildren(reader);
       return;
     }
@@ -2000,18 +2000,20 @@
     var list = create("div", "shop-list");
     state.snapshot.shop.forEach(function (item) {
       var card = create("article", "shop-card");
-      var copy = document.createElement("div");
+      var copy = create("div", "shop-copy");
       copy.appendChild(create("h3", "", item.name));
-      copy.appendChild(create("p", "", cleanShopDescription(item)));
-      copy.appendChild(create("strong", "shop-price", item.price + " " + item.currency));
+      copy.appendChild(create("p", "player-description", cleanShopDescription(item)));
       card.appendChild(copy);
+      var footer = create("div", "shop-card-footer");
+      footer.appendChild(create("strong", "shop-price", item.price + " " + item.currency));
       var button = create("button", "", "Buy");
       button.type = "button";
       button.dataset.action = "purchase";
       button.dataset.value = item.uuid;
       button.dataset.label = item.name;
       button.disabled = !state.worldActive;
-      card.appendChild(button);
+      footer.appendChild(button);
+      card.appendChild(footer);
       list.appendChild(card);
     });
     if (!state.snapshot.shop.length) list.appendChild(emptyState("The campaign shop is empty right now."));
@@ -2020,11 +2022,12 @@
   }
 
   function cleanShopDescription(item) {
-    var description = String(item && item.description || "").trim();
-    var name = String(item && item.name || "").trim();
+    var description = playerText(item && item.description, { item: item, explain: true });
+    var name = playerText(item && item.name);
     if (!name) return description;
-    while (description.toLowerCase().startsWith(name.toLowerCase())) {
+    while (description.toLowerCase().startsWith(name.toLowerCase()) && /^(?:\s|[.:—–-]|$)/.test(description.slice(name.length))) {
       description = description.slice(name.length).trim();
+      description = description.replace(/^[.:—–-]\s*/, "");
     }
     return description || "No additional details are available.";
   }
@@ -2744,7 +2747,7 @@
     var actor = state.snapshot && state.snapshot.actor;
     var item = actor && (actor.actions || []).find(function (entry) { return entry.uuid === uuid; });
     if (!item) return;
-    document.getElementById("modal-title").textContent = item.name;
+    document.getElementById("modal-title").textContent = playerText(item.name);
     var panel = create("article", "item-detail");
     if (item.image) {
       var image = document.createElement("img");
@@ -2754,7 +2757,7 @@
     }
     panel.appendChild(create("p", "eyebrow", item.category || item.type));
     panel.appendChild(create("p", "item-detail-subtitle", (item.subtitle || item.type) + (item.uses ? " · " + item.uses : "")));
-    panel.appendChild(create("p", "item-detail-copy", item.description || "No additional item details were provided in Foundry."));
+    panel.appendChild(create("p", "item-detail-copy", playerText(item.description, { item: item, explain: true }) || "No additional item details were provided in Foundry."));
     var controls = create("div", "item-detail-actions");
     var activities = item.activities || [];
     activities.forEach(function (activity) {
@@ -2776,7 +2779,7 @@
         facts.appendChild(create("span", "activity-save", saveText));
       }
       if (facts.childNodes.length) card.appendChild(facts);
-      if (activity.description) card.appendChild(create("p", "activity-description", activity.description));
+      if (activity.description) card.appendChild(create("p", "activity-description", playerText(activity.description, { item: item, activity: activity, explain: true })));
       if ((activity.effects || []).length) {
         var effectBadges = create("div", "activity-effects");
         (activity.effects || []).forEach(function (effect) { effectBadges.appendChild(create("span", "", "◈ " + effect.name)); });
@@ -2807,7 +2810,7 @@
         castOptions.forEach(function (castOption, index) {
           var option = document.createElement("option");
           option.value = String(index);
-          option.textContent = castOption.label;
+          option.textContent = playerText(castOption.label);
           option.disabled = activity.requiresSpellSlot && Number(castOption.value || 0) < 1;
           castSelect.appendChild(option);
         });
@@ -2986,19 +2989,179 @@
   var toastTimer = 0;
   function showToast(message, duration) {
     window.clearTimeout(toastTimer);
-    elements.toast.textContent = message;
+    elements.toast.textContent = playerText(message);
     elements.toast.hidden = false;
     toastTimer = window.setTimeout(function () { elements.toast.hidden = true; }, duration || 3200);
+  }
+
+  // Presentation only: never rewrite cached snapshots, roll formulas, or action payloads.
+  // Syntax reference: https://github.com/foundryvtt/dnd5e/wiki/Enrichers
+  function playerText(value, options) {
+    options = options || {};
+    var text = String(value == null ? "" : value);
+    if (!/[@&][a-z][\w.]*\[|\[\[|@[a-z][\w.]*|<\/?[a-z]|&(?:#\w+|\w+);/i.test(text)) return text.trim();
+    var snapshot = options.snapshot || state.snapshot || {};
+    var item = options.item || {};
+    var notes = new Map();
+    var abilities = { str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma" };
+    var skills = { acr: "Acrobatics", ani: "Animal Handling", arc: "Arcana", ath: "Athletics", dec: "Deception", his: "History", ins: "Insight", itm: "Intimidation", inv: "Investigation", med: "Medicine", nat: "Nature", prc: "Perception", prf: "Performance", per: "Persuasion", rel: "Religion", slt: "Sleight of Hand", ste: "Stealth", sur: "Survival" };
+    // Brief reminders, not replacements for the full condition rules.
+    // https://www.dndbeyond.com/sources/dnd/free-rules/rules-glossary
+    var conditions = {
+      blinded: "You cannot see; your attacks have Disadvantage and attacks against you have Advantage.",
+      charmed: "You cannot attack the charmer; they have Advantage on social checks with you.",
+      deafened: "You cannot hear.",
+      frightened: "While you see the source, attacks and checks have Disadvantage; you cannot willingly move closer.",
+      grappled: "Your Speed is 0 until the grapple ends.",
+      incapacitated: "You cannot take actions, Bonus Actions, or Reactions.",
+      invisible: "You cannot normally be seen; see the full rules for combat exceptions.",
+      paralyzed: "You are Incapacitated and cannot move or speak.",
+      petrified: "You are transformed into an inert solid substance and cannot act.",
+      poisoned: "Your attacks and ability checks have Disadvantage.",
+      prone: "Crawl or spend half your Speed to stand; your attacks have Disadvantage. Nearby attacks have Advantage; distant attacks have Disadvantage.",
+      restrained: "Your Speed is 0; your attacks and Dexterity saves have Disadvantage.",
+      stunned: "You are Incapacitated; attacks against you have Advantage.",
+      unconscious: "You are unaware, Incapacitated, and unable to move or speak.",
+      exhaustion: "Apply your campaign’s Exhaustion penalties for your current level."
+    };
+    function title(word) {
+      return String(word || "").replace(/[_-]/g, " ").replace(/\b[a-z]/g, function (letter) { return letter.toUpperCase(); });
+    }
+    function readableName(raw) {
+      raw = String(raw || "").trim();
+      if (/^(?:\.?\w{16}|(?:Compendium|Actor|Item|JournalEntry|RollTable|Macro|Scene)\.[\w.-]+)$/i.test(raw)) return "";
+      return raw;
+    }
+    function names(raw) {
+      return String(raw || "").split(/[/|]/).map(function (key) {
+        return abilities[key.toLowerCase()] || skills[key.toLowerCase()] || title(readableName(key));
+      }).filter(Boolean).join(" or ");
+    }
+    function note(name, explanation) {
+      if (options.explain && name && explanation && !notes.has(name)) notes.set(name, explanation);
+    }
+    function referenced(kind, target, label) {
+      var known = [].concat(snapshot.actor && snapshot.actor.actions || [], snapshot.shop || [], snapshot.journals || []);
+      var relative = /^\.?\w{16}$/.test(target) || /^\.Item\.\w+$/.test(target);
+      var match = known.find(function (entry) {
+        return entry.uuid === target || (relative && String(entry.uuid || "").split(".").pop() === target.split(".").pop()) ||
+          (!/\./.test(target) && (entry.name || entry.title || "").toLowerCase() === target.toLowerCase());
+      });
+      var name = readableName(label) || (match && (match.name || match.title)) || readableName(target);
+      if (!name) return "linked " + (/journal/i.test(kind) ? "note" : /table/i.test(kind) ? "table" : "content") + " (details not saved on this phone)";
+      if (options.explain && match && match !== item && (match.description || match.content)) {
+        var summary = playerText(match.description || match.content, { snapshot: snapshot, item: match }).replace(/\s+/g, " ");
+        if (summary.length > 280) summary = summary.slice(0, 277).replace(/\s+\S*$/, "") + "…";
+        note(name, summary);
+      } else if (!match) note(name, "Full details have not been shared to this phone. Ask your GM if you need them.");
+      return name;
+    }
+    function parameters(raw) {
+      var values = {};
+      var rest = String(raw).replace(/([\w]+)=(?:"([^"]*)"|'([^']*)'|([^\s]+))/g, function (_, key, a, b, c) {
+        values[key.toLowerCase()] = a == null ? b == null ? c : b : a;
+        return " ";
+      }).trim();
+      return { values: values, words: rest.split(/\s+/).filter(Boolean) };
+    }
+    function dataLabel(path) {
+      var key = path.replace(/^@(?:system\.)?/, "");
+      var ability = /^abilities\.([^.]+)\.(mod|value|dc)$/.exec(key);
+      if (ability) return "your " + names(ability[1]) + ({ mod: " modifier", value: " score", dc: " save DC" }[ability[2]]);
+      if (key === "prof" || key === "attributes.prof") return "your proficiency bonus";
+      if (key === "mod") return "your ability modifier";
+      if (key === "name") return item.name || snapshot.actor && snapshot.actor.name || "this character";
+      if (key === "details.level" || key === "level") return "your level";
+      if (key === "attributes.spellmod") return "your spellcasting modifier";
+      if (key === "attributes.spelldc") return "your spell save DC";
+      if (key === "item.level") return "the spell’s level";
+      if (key === "item.name") return item.name || "this item";
+      if (key.indexOf("scale.") === 0) return "the amount for your feature’s current level";
+      return "the value in this feature’s details";
+    }
+    function command(kind, raw, label) {
+      kind = kind.toLowerCase();
+      var args = parameters(raw);
+      var p = args.values;
+      var words = args.words.filter(function (word) { return !/^(?:short|long|extended|average|passive|rules=\d+)$/i.test(word); });
+      var activities = item.activities || [];
+      var activity = p.activity ? activities.find(function (entry) { return entry.id === p.activity; }) : options.activity || activities.find(function (entry) {
+        return kind === "save" ? Boolean(entry.save) : kind === "heal" ? entry.type === "heal" : kind === "damage" ? /attack|damage|save/.test(entry.type) : entry.type === kind;
+      });
+      var rolls = activity && ((activity.rollsByLevel || []).find(function (entry) { return Number(entry.level) === Number(item.spellLevel || 0); }) || (activity.rollsByLevel || [])[0]);
+      function result(generated) {
+        if (label && label !== generated) { note(label, generated); return label; }
+        return generated;
+      }
+      if (kind === "lookup") return dataLabel((raw.match(/@[\w.]+/) || ["@unknown"])[0]);
+      if (/^(?:item|uuid|compendium|embed|journalentry|rolltable|macro|scene|actor)$/.test(kind)) return referenced(kind, words.join(" "), label);
+      if (/^(?:condition|reference)$/.test(kind)) {
+        var key = (p.condition || p.status || p.rule || words[0] || "").toLowerCase();
+        var ruleName = readableName(label) || title(key) || "Rule reference";
+        note(ruleName, conditions[key] || "Check this rule with your GM for your campaign’s version.");
+        return ruleName;
+      }
+      if (/^(?:check|skill|tool|save)$/.test(kind)) {
+        var ability = p.ability || words.find(function (word) { return Object.hasOwn(abilities, word) || Object.values(abilities).some(function (name) { return name.toLowerCase() === word.toLowerCase(); }); });
+        var skill = p.skill || words.filter(function (word) { return Object.hasOwn(skills, word) || Object.values(skills).some(function (name) { return name.toLowerCase() === word.toLowerCase(); }); }).join("/");
+        var dc = p.dc || words.find(function (word) { return /^\d+$/.test(word); }) || (activity && activity.save && activity.save.dc);
+        var checkName = [names(ability), skill ? (ability ? "(" + names(skill) + ")" : names(skill)) : ""].filter(Boolean).join(" ");
+        if (!checkName && activity && activity.save) checkName = (activity.save.abilityLabels || activity.save.abilities || []).map(names).join(" or ");
+        if (p.tool) checkName += (checkName ? " using " : "") + (p.tool === "thief" ? "Thieves’ Tools" : names(p.tool));
+        var action = kind === "save" ? "saving throw" : "check";
+        if (!checkName && !dc) return result("See this activity’s " + action + " details");
+        return result((/\bpassive(?:=true)?\b/i.test(raw) ? "Passive " : "") + (dc ? "DC " + dc + " " : "") + checkName + " " + action);
+      }
+      if (/^(?:damage|heal|healing|attack|r|roll|gmroll|blindroll|selfroll)$/.test(kind)) {
+        if (raw.includes("&")) return raw.split(/\s*&\s*/).map(function (part) { return command(kind, part); }).join(" plus ");
+        var types = p.type || words.filter(function (word) { return /^(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder|healing|temp|temphp)$/i.test(word); }).join(" or ");
+        var formula = p.formula || words.filter(function (word) { return /^[\d@+\-*/().]/.test(word) && !/^\.\w{16}$/.test(word); }).join(" ");
+        if (!formula && rolls) {
+          var nativeRolls = (rolls.rolls || []).filter(function (roll) { return roll.kind === (kind === "heal" ? "healing" : kind); });
+          if (nativeRolls.length) return result(nativeRolls.map(function (roll) { return roll.formula + " " + (roll.label || roll.kind); }).join(" plus "));
+        }
+        if (!formula) return result("See this activity’s " + (kind === "heal" ? "healing" : kind) + " details");
+        if (kind === "heal" || kind === "healing" || /healing|temp/.test(types)) return result(formula + (/temp/.test(types) ? " temporary hit points" : " hit points restored"));
+        if (kind === "attack") return result(formula + " to hit");
+        if (kind === "damage") return result(formula + (types ? " " + types.replace(/[/|]/g, " or ") : "") + " damage");
+        return result("Roll " + formula);
+      }
+      if (kind === "award") return result("Reward (your GM applies the amount)");
+      return readableName(label) || "See this feature’s details";
+    }
+    var entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", hellip: "…", times: "×" };
+    text = text.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, function (whole, entity) {
+      if (entity[0] !== "#") return entities[entity.toLowerCase()] || whole;
+      var code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+    });
+    text = text.replace(/<(script|style|iframe)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<li\b[^>]*>/gi, "\n• ")
+      .replace(/<\/(?:td|th)\s*>\s*<(?:td|th)\b[^>]*>/gi, " · ")
+      .replace(/<br\s*\/?\s*>|<\/(?:p|div|h[1-6]|li|tr|ul|ol|table|section|blockquote)\s*>/gi, "\n")
+      .replace(/<\/?[a-z][^>]*>/gi, "");
+    text = text.replace(/\[\[\s*\/?([\w]+)([^]*?)\]\](?:\{([^}]*)\})?/g, function (_, kind, body, label) {
+      return /^\d/.test(kind) ? command("roll", kind + body, label) : command(kind, body.trim(), label);
+    });
+    text = text.replace(/[@&]([a-z][\w]*)\[([^\]]*)\](?:\{([^}]*)\})?/gi, function (_, kind, body, label) {
+      return command(kind, body, label);
+    });
+    // Remove broken/unlabelled internal paths, but leave ordinary email addresses alone.
+    text = text.replace(/\b(?:Compendium|Actor|Item|JournalEntry|RollTable|Macro|Scene)\.[\w.-]+/g, "linked content")
+      .replace(/(^|[^\w@])(@(?:[a-z][\w]*(?:\.[\w-]+)+|prof|mod|name|level))(?=$|[^\w@])/gi, function (_, prefix, path) { return prefix + dataLabel(path); });
+    if (notes.size) text += "\n\nQuick reference\n" + Array.from(notes, function (entry) { return entry[0] + ": " + entry[1]; }).join("\n\n");
+    return text.replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   function create(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
-    if (text !== undefined && text !== null) node.textContent = text;
+    if (text !== undefined && text !== null) node.textContent = playerText(text);
     return node;
   }
 
   if (window.__POCKET_TEST_MODE__) {
-    window.__POCKET_TEST__ = { evaluateLocalFormula: evaluateLocalFormula };
+    window.__POCKET_TEST__ = { evaluateLocalFormula: evaluateLocalFormula, playerText: playerText, cleanShopDescription: cleanShopDescription };
   }
 })();

@@ -20,9 +20,11 @@
   text-size-adjust: 100%;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
+  width: 100%;
+  max-width: 100%;
   min-height: 100%;
   margin: 0;
   background: var(--canvas);
@@ -36,6 +38,8 @@ body {
 }
 
 button, input, select, textarea {
+  min-width: 0;
+  max-width: 100%;
   color: inherit;
   font: inherit;
 }
@@ -304,6 +308,21 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 
 .app-view { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .view-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 24px 20px 30px; -webkit-overflow-scrolling: touch; }
+/* Every scroll surface is vertical; shrink content before it can widen a card. */
+.gate-view, .view-content, .modal-card, .pocket-message-list {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y pinch-zoom;
+  overflow-wrap: anywhere;
+}
+.app-view, .view-content *, .modal-card * { min-width: 0; }
+.view-content img, .modal-card img { max-width: 100%; }
+.view-content table, .modal-card table { width: 100%; table-layout: fixed; }
+.view-content pre, .modal-card pre { white-space: pre-wrap; }
+.status-strip > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.status-dot { flex-shrink: 0; }
 .page-title { margin-bottom: 22px; }
 .page-title h2 { font-size: 38px; line-height: 1; }
 .page-title > p { margin: 10px 0 0; }
@@ -314,7 +333,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: rgba(23, 29, 39, 0.92);
 }
 
-.hero-card { padding: 19px; display: grid; grid-template-columns: 74px 1fr; gap: 16px; align-items: center; }
+.hero-card { padding: 19px; display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 16px; align-items: center; }
 .hero-card + .stress-card { margin-top: 13px; }
 .portrait, .portrait-fallback { width: 74px; height: 88px; border-radius: 16px; object-fit: cover; background: var(--surface-3); border: 1px solid var(--line-bright); }
 .portrait-fallback { display: grid; place-items: center; color: var(--blue); font-family: Georgia, "Times New Roman", serif; font-size: 26px; }
@@ -430,7 +449,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .bio-form label { display: block; margin-bottom: 8px; color: #c9d3df; font-size: 13px; font-weight: 700; }
 
 .journal-list, .shop-list, .message-list { display: grid; gap: 11px; }
-.journal-card { width: 100%; padding: 16px; display: grid; grid-template-columns: 38px 1fr 18px; gap: 11px; align-items: center; color: inherit; text-align: left; }
+.journal-card { width: 100%; padding: 16px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 18px; gap: 11px; align-items: center; color: inherit; text-align: left; }
 .journal-number { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font-size: 20px; }
 .journal-card strong { display: block; font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 500; }
 .journal-card small { display: block; margin-top: 5px; font-size: 12px; }
@@ -454,11 +473,14 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .chat-form { margin-top: 14px; display: grid; grid-template-columns: 1fr 52px; gap: 9px; }
 .chat-form button { border: 1px solid #7899ba; border-radius: 16px; background: #4f6d8b; font-size: 22px; }
 
-.shop-card { padding: 16px; display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+.shop-card { min-width: 0; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.shop-copy { min-width: 0; }
+.shop-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .shop-card h3 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
-.shop-card p { margin: 6px 0 10px; font-size: 13px; }
+.shop-card p { margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.player-description, .activity-description { white-space: pre-wrap; }
 .shop-price { color: var(--blue); }
-.shop-card button { align-self: end; min-height: 42px; padding: 0 14px; border: 1px solid var(--line-bright); border-radius: 13px; background: var(--surface-3); color: var(--blue); font-weight: 700; }
+.shop-card button { min-width: 88px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line-bright); border-radius: 13px; background: var(--surface-3); color: var(--blue); font-weight: 700; }
 .shop-card button:disabled { opacity: .45; }
 .shop-wallet { margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(145deg, #182532, #121922); }
 .shop-wallet strong { display: block; margin-top: 4px; color: #d8e8f6; font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 500; }
@@ -567,7 +589,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .item-detail-actions { clear: both; display: grid; gap: 8px; }
 .item-detail-actions button { margin: 0; }
 .activity-card { padding: 15px; display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, #18222e, #10161f); }
-.activity-card-heading { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.activity-card-heading { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .activity-card-heading h3 { margin: 0; color: #e1e9f1; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
 .activity-type { flex: 0 0 auto; padding: 4px 8px; border: 1px solid #516c86; border-radius: 999px; color: var(--blue); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .activity-facts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -676,6 +698,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 
 @media (max-width: 370px) {
+  .app-header { gap: 8px; padding-inline: 14px; }
+  .brand { gap: 8px; }
+  .brand-mark { width: 40px; height: 44px; flex-basis: 40px; font-size: 18px; }
+  .brand-copy strong { font-size: 24px; white-space: normal; }
+  .brand-copy small { font-size: 9px; }
+  .view-content { padding-inline: 14px; }
   .hp-controls { grid-template-columns: 1fr; }
   .hp-help { grid-column: 1; }
 }

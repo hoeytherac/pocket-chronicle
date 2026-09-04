@@ -90,8 +90,8 @@ test("ships the installable app and secure bridge boundaries", async () => {
   assert.doesNotMatch(serviceWorker, /exodusters-tables\.json/);
   assert.match(serviceWorker, /key\.startsWith\("pocket-chronicle-"\)/);
   assert.doesNotMatch(page, /window\.location\.replace/);
-  assert.match(mobile, /mobile\.js\?v=26/);
-  assert.match(mobile, /mobile\.css\?v=26/);
+  assert.match(mobile, /mobile\.js\?v=27/);
+  assert.match(mobile, /mobile\.css\?v=27/);
   assert.match(mobile, /data-tab="spells"/);
   assert.match(mobile, /data-tab="equipment"/);
   assert.doesNotMatch(mobile, /data-tab="effects"/);
@@ -332,4 +332,58 @@ test("allows authenticated bridge traffic from any HTTPS Foundry server", async 
   const legacyDoubleSlash = await requestWorker(new Request("http://localhost//api/bridge/heartbeat", requestOptions));
   assert.equal(legacyDoubleSlash.status, 204);
   assert.equal(legacyDoubleSlash.headers.get("access-control-allow-origin"), origin);
+});
+
+test("renders Foundry references as player text without changing source data or executing rolls", async () => {
+  const source = await readFile(new URL("../public/mobile.js", import.meta.url), "utf8");
+  const context = {
+    document: { addEventListener() {} },
+    localStorage: { getItem() { return null; }, removeItem() {} },
+    __POCKET_TEST_MODE__: true,
+    fetch() { throw new Error("Reading descriptions must not make requests"); },
+    crypto: { getRandomValues() { throw new Error("Reading descriptions must not roll dice"); } },
+  };
+  context.window = context;
+  vm.runInNewContext(source, context);
+  const { playerText, cleanShopDescription } = context.__POCKET_TEST__;
+  assert.equal(playerText("Make a [[/check ability=wis dc=15]] or take @Damage[2d6 fire]."), "Make a DC 15 Wisdom check or take 2d6 fire damage.");
+  assert.equal(playerText('[[/check skill=acr/ath dc=15]]'), "DC 15 Acrobatics or Athletics check");
+  assert.equal(playerText('[[/save dex 14]]'), "DC 14 Dexterity saving throw");
+  assert.equal(playerText('[[/damage formula="1d6 + 2" type=piercing & formula=1d4 type=fire average=true]]'), "1d6 + 2 piercing damage plus 1d4 fire damage");
+  assert.equal(playerText('[[/heal 2d4 + 2]]'), "2d4 + 2 hit points restored");
+  assert.equal(playerText('[[/heal formula=10 type=temphp]]'), "10 temporary hit points");
+  assert.equal(playerText('[[/attack +5]]'), "+5 to hit");
+  assert.equal(playerText('[[/r 1d20 + @prof]]'), "Roll 1d20 + your proficiency bonus");
+  assert.equal(playerText('[[/damage 1d6 + @abilities.dex.mod slashing]]'), "1d6 + your Dexterity modifier slashing damage");
+  assert.equal(playerText("Contact player@example.com or @Colesen."), "Contact player@example.com or @Colesen.");
+  assert.match(playerText("You are &Reference[condition=prone].", { explain: true }), /Quick reference\nProne: Crawl/);
+  assert.match(playerText("@Condition[Grappled]", { explain: true }), /Your Speed is 0/);
+  assert.equal(playerText('<h2>Spell</h2><p>Deals [[/damage 2d6 fire]].</p><ul><li>Once per turn</li><li>On a hit</li></ul>'), "Spell\nDeals 2d6 fire damage.\n\n• Once per turn\n\n• On a hit");
+  assert.equal(playerText('<table><tr><th>Cost</th><th>Effect</th></tr><tr><td>1 gp</td><td>Healing</td></tr></table>'), "Cost · Effect\n1 gp · Healing");
+  assert.equal(playerText('<p>Safe &amp; sound</p><script>stealSecrets()</script><img onerror="stealSecrets()" src=x>'), "Safe & sound");
+  assert.equal(playerText("@UUID[Compendium.private.feats.Item.abcdefghijklmnop]{Shadow Step}"), "Shadow Step");
+  assert.equal(playerText("@UUID[Compendium.private.feats.Item.abcdefghijklmnop]"), "linked content (details not saved on this phone)");
+  assert.equal(playerText("@UnknownMacro[private.internal.id]"), "See this feature’s details");
+
+  const linked = Object.freeze({ uuid: "Actor.owner.Item.abcdefghijklmnop", name: "Shadow Step", description: "As a Bonus Action, teleport up to 30 feet between shadows." });
+  const item = Object.freeze({ uuid: "Item.ring", name: "Ring", description: "Grants @UUID[Actor.owner.Item.abcdefghijklmnop]{Shadow Step}.", activities: Object.freeze([]) });
+  const snapshot = Object.freeze({ actor: Object.freeze({ actions: Object.freeze([linked, item]) }), shop: Object.freeze([]), journals: Object.freeze([]) });
+  const before = JSON.stringify(snapshot);
+  const result = playerText(item.description, { snapshot, item, explain: true });
+  assert.match(result, /Grants Shadow Step\./);
+  assert.match(result, /Shadow Step: As a Bonus Action, teleport up to 30 feet/);
+  assert.doesNotMatch(result, /@UUID|Compendium|Actor\.owner/);
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.equal(cleanShopDescription({ name: "Ring", description: "Ringmail protects you." }), "Ringmail protects you.");
+  assert.equal(cleanShopDescription({ name: "Ring", description: "Ring. Worn on a finger." }), "Worn on a finger.");
+
+  // Activity-only commands use the approved activity data, never execute an activity.
+  const spell = { spellLevel: 1, activities: [{ id: "spell-activity", type: "save", save: { dc: 15, abilityLabels: ["Dexterity"] }, rollsByLevel: [{ level: 1, rolls: [{ kind: "damage", formula: "3d6", label: "Fire damage" }] }] }] };
+  assert.equal(playerText("[[/save activity=spell-activity]]", { item: spell }), "DC 15 Dexterity saving throw");
+  assert.equal(playerText("[[/damage activity=spell-activity]]", { item: spell }), "3d6 Fire damage");
+  assert.equal(playerText("[[/damage activity=not-synced]]", { item: spell }), "See this activity’s damage details");
+
+  const a = { uuid: "Item.a", name: "A", description: "See @UUID[Item.b]{B}" };
+  const b = { uuid: "Item.b", name: "B", description: "See @UUID[Item.a]{A}" };
+  assert.match(playerText(a.description, { item: a, snapshot: { shop: [a, b] }, explain: true }), /B: See A/);
 });
